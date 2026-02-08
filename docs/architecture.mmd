@@ -1,0 +1,23 @@
+flowchart LR
+  subgraph Frontend
+    UI[Web UI\nImage Gallery + Feature Panel]
+  end
+
+  subgraph Backend
+    API[FastAPI]
+    ML[Prefix-CF Model]
+    DB[(SQLite)]
+  end
+
+  subgraph Data
+    Scraper[Shopify Scraper]
+    JSON[products.json / fountain_pens.csv]
+  end
+
+  UI -->|select, rate| API
+  API --> DB
+  API --> ML
+  ML --> API
+  Scraper --> JSON
+  JSON --> DB
+  API -->|recommendations| UI

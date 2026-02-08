@@ -1,0 +1,43 @@
+﻿import React from 'react';
+import ProductCard from './ProductCard';
+
+export default function OnboardingGrid({
+  products,
+  selectedIds,
+  onToggle,
+  onOpenRating,
+  mode,
+}) {
+  return (
+    <section className="screen shell">
+      <header className="section-header">
+        <div>
+          <p className="eyebrow">Onboarding</p>
+          <h2>Choose 10 from 50 products</h2>
+        </div>
+        <div className="counter-block">
+          <span>{selectedIds.length}/10 selected</span>
+          <button
+            type="button"
+            onClick={onOpenRating}
+            disabled={selectedIds.length !== 10}
+          >
+            Continue
+          </button>
+        </div>
+      </header>
+
+      <div className="pool-grid">
+        {products.map((product) => (
+          <ProductCard
+            key={product.id}
+            product={product}
+            mode={mode}
+            selected={selectedIds.includes(product.id)}
+            onClick={() => onToggle(product.id)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}

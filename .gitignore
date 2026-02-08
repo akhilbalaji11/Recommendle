@@ -1,0 +1,53 @@
+# ── Dependencies ──
+node_modules/
+frontend/node_modules/
+
+# ── Build outputs ──
+frontend/dist/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Environment & secrets ──
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# ── Claude / Copilot ──
+.claude/
+
+# ── IDE / Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS files ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Python virtual environments ──
+venv/
+.venv/
+env/
+
+# ── Byte-compiled / cached ──
+*.pyc
+__pycache__/
+
+# ── Logs ──
+*.log
+npm-debug.log*
+
+# ── Misc ──
+*.bak
+*.tmp

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 52" fill="none">
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6aaa64"/>
+      <stop offset="50%" stop-color="#c9b458"/>
+      <stop offset="100%" stop-color="#787c7e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Wordmark -->
+  <text x="0" y="36" font-family="'Inter','Helvetica Neue',Arial,sans-serif" font-weight="800" font-size="34" fill="#1a1a1b" letter-spacing="-0.5">
+    Recommend<tspan fill="#6aaa64">le</tspan>
+  </text>
+
+  <!-- Gradient underline accent -->
+  <rect x="0" y="44" width="280" height="4" rx="2" fill="url(#accent)"/>
+</svg>

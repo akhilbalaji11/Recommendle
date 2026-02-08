@@ -7,7 +7,7 @@
 ## How It Works
 
 1. **Onboarding** — You're shown a diverse pool of 50 fountain pens. Pick 10 that appeal to you and rate the set.
-2. **10 Rounds of Dueling** — Each round presents 10 candidate pens. You pick one; the AI simultaneously predicts which one you'll choose.
+2. **5 Rounds of Dueling** — Each round presents 10 candidate pens. You pick one; the AI simultaneously predicts which one you'll choose.
 3. **Scoring** — Each round awards 10 points to whoever "wins" (match = AI point, miss = human point). The final score tells you how predictable (or surprising) your taste is.
 4. **Leaderboard** — Completed games are ranked by score delta across all players.
 

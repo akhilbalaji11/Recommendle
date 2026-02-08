@@ -1,4 +1,5 @@
 ﻿import React, { useState } from 'react';
+import logo from './assets/logo.svg';
 import WelcomeScreen from './components/WelcomeScreen';
 import BrainModePanel from './components/BrainModePanel';
 import OnboardingGrid from './components/OnboardingGrid';
@@ -44,7 +45,7 @@ export default function App() {
     next: false,
   });
 
-  const totalRounds = game?.total_rounds ?? 10;
+  const totalRounds = game?.total_rounds ?? 5;
   const humanScore = game?.human_score ?? 0;
   const aiScore = game?.ai_score ?? 0;
 
@@ -166,7 +167,12 @@ export default function App() {
 
   return (
     <main className="app-root">
-      <div className="backdrop" />
+      {view !== VIEW.WELCOME && (
+        <header className="app-header">
+          <img src={logo} alt="Recommendle" className="app-logo" />
+        </header>
+      )}
+
       {error && (
         <div className="error-banner">
           <span>{error}</span>

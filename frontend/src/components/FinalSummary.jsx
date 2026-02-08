@@ -57,7 +57,7 @@ export default function FinalSummary({
       </div>
 
       <div className="round-actions">
-        <button type="button" onClick={onRestart}>Start New Session</button>
+        <button type="button" onClick={onRestart}>Play Again</button>
       </div>
     </section>
   );

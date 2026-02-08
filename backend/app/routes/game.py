@@ -40,7 +40,7 @@ async def start_game(
         game = await game_service.create_game(
             db,
             player_name=payload.player_name,
-            total_rounds=10,
+            total_rounds=5,
         )
         return GameOut(**game)
     except ValueError as exc:

@@ -85,7 +85,7 @@ def analyze_ai_accuracy(games: list[dict], rounds_by_game: dict) -> dict:
     }
 
 
-def analyze_accuracy_by_round(games: list[dict], rounds_by_game: dict, total_rounds: int = 10) -> dict[int, dict]:
+def analyze_accuracy_by_round(games: list[dict], rounds_by_game: dict, total_rounds: int = 5) -> dict[int, dict]:
     """AI accuracy broken down by round number — the core learning curve."""
     by_round: dict[int, dict] = {}
 
@@ -168,7 +168,7 @@ def analyze_ai_rank_when_wrong(games: list[dict], rounds_by_game: dict) -> dict:
     }
 
 
-def analyze_learning_metrics(games: list[dict], rounds_by_game: dict, total_rounds: int = 10) -> dict:
+def analyze_learning_metrics(games: list[dict], rounds_by_game: dict, total_rounds: int = 5) -> dict:
     """Track coherence and predicted prefix rating evolution across rounds."""
     coherence_by_round: dict[int, list[float]] = defaultdict(list)
     ppr_by_round: dict[int, list[float]] = defaultdict(list)

@@ -305,7 +305,7 @@ class GameService:
         self,
         db: AsyncIOMotorDatabase,
         player_name: str,
-        total_rounds: int = 10,
+        total_rounds: int = 5,
     ) -> dict[str, Any]:
         await self._ensure_indexes(db)
         model = await self._ensure_model(db)

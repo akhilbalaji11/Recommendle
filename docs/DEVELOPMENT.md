@@ -142,15 +142,14 @@ These endpoints power the original recommendation UI (non-game mode):
 
 ---
 
-## Evaluation (Proof of Learning)
+## Evaluation (AI Performance Analysis)
 
-A simulation harness generates synthetic users with latent preferences, creates prefix ratings, and trains the NMF-based PBCF model.
+The evaluation script analyzes **real completed game data** from MongoDB to measure how well the AI predicts player choices.
 
-### Metrics Tracked
+### Prerequisites
 
-- **RMSE on held-out prefix ratings** — prediction accuracy.
-- **Learning curve** — RMSE decreases as more ratings are known.
-- **Top-1 recommendation hit rate** — accuracy improves with more ratings.
+- MongoDB running with at least one completed game in the database.
+- Play a full game at `http://localhost:5173` first.
 
 ### Run the Evaluation
 
@@ -159,11 +158,25 @@ cd backend
 python -m scripts.evaluate_pbcf
 ```
 
-Artifacts are saved to `backend/reports/`:
+### Reports Generated
 
-- `rmse_curve.png`
-- `hit_rate_curve.png`
-- `evaluation_summary.txt`
+Artifacts are saved to `backend/reports/` (git-ignored, generated locally):
+
+| File | Description |
+|------|-------------|
+| `evaluation_summary.txt` | Full text report with all metrics |
+| `evaluation_data.json` | Raw metrics as JSON for programmatic use |
+| `ai_accuracy_by_round.png` | Bar chart: does the AI improve over 10 rounds? |
+| `score_distribution.png` | Human vs AI scores per game + delta histogram |
+| `learning_metrics.png` | Coherence & predicted prefix rating evolution |
+
+### Metrics Tracked
+
+- **Overall AI accuracy** — what percentage of rounds does the AI correctly predict the human's pick?
+- **AI accuracy by round** — the core learning curve: does the AI get better as it learns more about you?
+- **Game outcomes** — human wins vs AI wins vs ties, average scores.
+- **AI rank analysis** — when the AI is wrong, where did your pick rank in its candidate list?
+- **Model learning metrics** — how coherence score and predicted prefix rating evolve across rounds.
 
 ---
 

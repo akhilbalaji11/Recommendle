@@ -44,6 +44,9 @@ env/
 *.pyc
 __pycache__/
 
+# ── Generated reports (run evaluate_pbcf.py to regenerate) ──
+backend/reports/
+
 # ── Logs ──
 *.log
 npm-debug.log*

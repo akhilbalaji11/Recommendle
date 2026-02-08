@@ -1,19 +1,76 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime, timedelta
 import hashlib
 import random
+from datetime import datetime, timedelta
 from typing import Any
 
+import numpy as np
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from ..ml.prefix_cf import PrefixCFModel
 from ..services.recommender_mongo import recommender_mongo
 
+# --------------- Feature-name humaniser ---------------
+
+_REDUNDANT_TAGS = {
+    "fountain pens", "fountain pen", "pens", "pen",
+    "ink", "inks", "writing", "stationery",
+    "hideoos", "bis-hidden", "products",
+}
+
+
+def humanize_feature(raw: str) -> str | None:
+    """Convert an internal feature key to a human-readable label.
+
+    Returns *None* for features that should be filtered out
+    (e.g. overly-generic tags like 'fountain pens').
+    """
+    if raw.startswith("vendor::"):
+        brand = raw.split("::", 1)[1].strip()
+        return brand.title()
+    if raw.startswith("type::"):
+        t = raw.split("::", 1)[1].strip()
+        if t.lower() in _REDUNDANT_TAGS:
+            return None
+        return t.title()
+    if raw.startswith("tag::"):
+        t = raw.split("::", 1)[1].strip()
+        if t.lower() in _REDUNDANT_TAGS:
+            return None
+        return t.title()
+    if raw.startswith("opt::"):
+        parts = raw.split("::")
+        if len(parts) == 3:
+            opt_name = parts[1].strip().title()
+            opt_val = parts[2].strip().title()
+            return f"{opt_val} {opt_name}"
+        return raw.replace("opt::", "").title()
+    if raw == "price_min_z":
+        return "Lower Price Range"
+    if raw == "price_max_z":
+        return "Higher Price Range"
+    return raw.title()
+
+
+def humanize_feature_list(
+    raw_list: list[tuple[str, float]],
+) -> list[tuple[str, float]]:
+    """Return a de-duped, human-readable version of [(raw_name, weight)]."""
+    seen: set[str] = set()
+    result: list[tuple[str, float]] = []
+    for raw, weight in raw_list:
+        label = humanize_feature(raw)
+        if label is None or label.lower() in seen:
+            continue
+        seen.add(label.lower())
+        result.append((label, weight))
+    return result
+
 
 class GameService:
-    """Sequential preference game service (50->10 onboarding, 10-round duel)."""
+    """Sequential preference game service (50->10 onboarding, 5-round duel)."""
 
     def __init__(self):
         self.recommender = recommender_mongo
@@ -616,9 +673,15 @@ class GameService:
 
         ai_score, ai_pick_product = scored[0]
         ai_pick_id = str(ai_pick_product["_id"])
-        ai_correct = ai_pick_id == product_id
+        ai_top3_ids = [str(p["_id"]) for _, p in scored[:3]]
+        ai_correct = product_id in ai_top3_ids
+        ai_exact = ai_pick_id == product_id
         human_points = 0 if ai_correct else 10
         ai_points = 10 if ai_correct else 0
+        ai_rank_of_pick = next(
+            (i + 1 for i, (_, p) in enumerate(scored) if str(p["_id"]) == product_id),
+            len(scored),
+        )
 
         human_pick_product = by_id[product_id]
         model.update_with_selection(state, human_pick_product, is_exception=False)
@@ -633,10 +696,42 @@ class GameService:
         post_metrics = await self._metrics_for_state(db, model, state, selected_ids)
 
         top_candidates = []
-        for score, product in scored[:3]:
+        for score, product in scored[:5]:
             card = self._product_card(product)
             card["score"] = float(score)
             top_candidates.append(card)
+
+        # Build feature-level explanation
+        human_vec = self.recommender.feature_space.vectorize(human_pick_product)
+        ai_vec = self.recommender.feature_space.vectorize(ai_pick_product)
+        user_vec = np.array(state.get("user_vec", []), dtype=np.float32)
+
+        # Identify what features the user profile has learned to prefer
+        inv_index = {v: k for k, v in self.recommender.feature_space.feature_index.items()}
+        feature_weights = []
+        for idx in range(len(user_vec)):
+            w = float(user_vec[idx])
+            if abs(w) > 0.05:
+                fname = inv_index.get(idx, f"feature_{idx}")
+                feature_weights.append((fname, w))
+        feature_weights.sort(key=lambda x: abs(x[1]), reverse=True)
+        top_positive = humanize_feature_list([(n, round(w, 3)) for n, w in feature_weights if w > 0][:8])
+        top_negative = humanize_feature_list([(n, round(w, 3)) for n, w in feature_weights if w < 0][:5])
+
+        # Human pick features
+        human_features = [inv_index.get(i, f"f{i}") for i in range(len(human_vec)) if human_vec[i] > 0]
+        ai_features = [inv_index.get(i, f"f{i}") for i in range(len(ai_vec)) if ai_vec[i] > 0]
+        shared_raw = list(set(human_features) & set(ai_features))
+        shared_features = [h for h in (humanize_feature(f) for f in shared_raw) if h is not None]
+
+        if ai_correct:
+            if ai_exact:
+                reason = f"The AI predicted your exact pick! It ranked this product #1 out of {len(candidate_products)} candidates based on your preference profile."
+            else:
+                match_rank = ai_top3_ids.index(product_id) + 1
+                reason = f"Your pick was the AI's #{match_rank} prediction. The AI successfully identified your choice within its top 3 candidates."
+        else:
+            reason = f"Your pick ranked #{ai_rank_of_pick} in the AI's predictions. The model's top pick was '{ai_pick_product.get('title', 'Unknown')}', which scored {ai_score:.2f} based on feature similarity to your profile."
 
         await db.game_rounds.update_one(
             {"_id": round_doc["_id"]},
@@ -649,6 +744,8 @@ class GameService:
                         {"product_id": str(product["_id"]), "score": float(score)}
                         for score, product in scored[:5]
                     ],
+                    "ai_top3_ids": ai_top3_ids,
+                    "ai_rank_of_pick": ai_rank_of_pick,
                     "ai_correct": ai_correct,
                     "human_points": human_points,
                     "ai_points": ai_points,
@@ -686,16 +783,108 @@ class GameService:
                 "score": float(ai_score),
             },
             "ai_correct": ai_correct,
+            "ai_exact": ai_exact,
+            "ai_rank_of_pick": ai_rank_of_pick,
+            "ai_top3_ids": ai_top3_ids,
             "human_points": human_points,
             "ai_points": ai_points,
             "total_human_score": new_human_total,
             "total_ai_score": new_ai_total,
             "ai_explanation": {
-                "reason": "AI selected the highest-scoring candidate under the current sequential preference state.",
+                "reason": reason,
                 "top_candidates": top_candidates,
+                "learned_preferences": top_positive,
+                "learned_dislikes": top_negative,
+                "shared_features": shared_features[:6],
             },
             "post_round_metrics": post_metrics,
             "game_complete": game_complete,
+        }
+
+    async def get_game_summary(
+        self,
+        db: AsyncIOMotorDatabase,
+        game_id: str,
+    ) -> dict[str, Any]:
+        """Return post-game insights: round-by-round stats, learned profile, top-5 recs."""
+        game = await self._get_game(db, game_id)
+        model = await self._ensure_model(db)
+
+        if game.get("status") != "completed":
+            raise ValueError("Game is not yet completed")
+
+        # Load all rounds
+        cursor = db.game_rounds.find(
+            {"game_id": game["_id"], "completed": True}
+        ).sort("round_number", 1)
+        rounds = await cursor.to_list(length=None)
+
+        # Round-by-round data for charts
+        round_stats = []
+        cumulative_ai = 0
+        cumulative_human = 0
+        for rnd in rounds:
+            ai_correct = rnd.get("ai_correct", False)
+            cumulative_ai += rnd.get("ai_points", 0)
+            cumulative_human += rnd.get("human_points", 0)
+            post = rnd.get("post_metrics", {})
+            round_stats.append({
+                "round_number": rnd["round_number"],
+                "ai_correct": ai_correct,
+                "ai_rank_of_pick": rnd.get("ai_rank_of_pick", None),
+                "ai_confidence": rnd.get("ai_confidence", 0),
+                "coherence": post.get("coherence_score", 0),
+                "predicted_rating": post.get("predicted_prefix_rating", 3.0),
+                "cumulative_ai": cumulative_ai,
+                "cumulative_human": cumulative_human,
+            })
+
+        # Model's learned preferences from the final state
+        state = game.get("model_state") or model.init_state()
+        user_vec = np.array(state.get("user_vec", []), dtype=np.float32)
+        inv_index = {v: k for k, v in self.recommender.feature_space.feature_index.items()}
+
+        feature_weights = []
+        for idx in range(len(user_vec)):
+            w = float(user_vec[idx])
+            if abs(w) > 0.05:
+                fname = inv_index.get(idx, f"feature_{idx}")
+                feature_weights.append((fname, w))
+        feature_weights.sort(key=lambda x: abs(x[1]), reverse=True)
+
+        learned_likes = humanize_feature_list([(n, round(w, 3)) for n, w in feature_weights if w > 0][:10])
+        learned_dislikes = humanize_feature_list([(n, round(w, 3)) for n, w in feature_weights if w < 0][:5])
+
+        # Top-5 recommended products from the full catalog
+        all_products = await self._all_products_for_scoring(db)
+        scored = self._rank_candidates(model, state, all_products)
+        top5_recs = []
+        for score, product in scored[:5]:
+            card = self._product_card(product)
+            card["score"] = float(score)
+            top5_recs.append(card)
+
+        # Accuracy summary
+        total = len(rounds)
+        correct = sum(1 for r in rounds if r.get("ai_correct"))
+        exact = sum(1 for r in rounds if r.get("ai_pick_id") == r.get("human_pick_id"))
+
+        return {
+            "game_id": str(game["_id"]),
+            "player_name": game["player_name"],
+            "total_rounds": total,
+            "human_score": game["human_score"],
+            "ai_score": game["ai_score"],
+            "accuracy": {
+                "top3_correct": correct,
+                "exact_correct": exact,
+                "top3_rate": correct / total if total else 0,
+                "exact_rate": exact / total if total else 0,
+            },
+            "round_stats": round_stats,
+            "learned_preferences": learned_likes,
+            "learned_dislikes": learned_dislikes,
+            "top5_recommendations": top5_recs,
         }
 
     async def get_game_status(
@@ -745,6 +934,43 @@ class GameService:
             }
             for index, game in enumerate(games)
         ]
+
+    async def get_player_history(
+        self,
+        db: AsyncIOMotorDatabase,
+        player_name: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Return completed games for a given player, most recent first."""
+        cursor = db.games.find(
+            {"player_name": player_name, "status": "completed"},
+        ).sort("created_at", -1).limit(limit)
+        games = await cursor.to_list(length=limit)
+
+        results: list[dict[str, Any]] = []
+        for game in games:
+            game_id = str(game["_id"])
+            total = int(game.get("current_round", 0))
+            h = int(game.get("human_score", 0))
+            a = int(game.get("ai_score", 0))
+
+            # Count AI correct rounds
+            ai_correct = await db.game_rounds.count_documents(
+                {"game_id": game["_id"], "completed": True, "ai_correct": True}
+            )
+
+            results.append({
+                "game_id": game_id,
+                "player_name": player_name,
+                "human_score": h,
+                "ai_score": a,
+                "score_difference": h - a,
+                "rounds_played": total,
+                "ai_accuracy": ai_correct / total if total else 0,
+                "created_at": game["created_at"],
+            })
+
+        return results
 
 
 game_service = GameService()

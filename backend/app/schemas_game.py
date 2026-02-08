@@ -69,6 +69,9 @@ class ScoredProductCard(ProductCard):
 class AIExplanation(BaseModel):
     reason: str
     top_candidates: list[ScoredProductCard]
+    learned_preferences: list[list] = Field(default_factory=list)
+    learned_dislikes: list[list] = Field(default_factory=list)
+    shared_features: list[str] = Field(default_factory=list)
 
 
 class RoundResultOut(BaseModel):
@@ -76,6 +79,9 @@ class RoundResultOut(BaseModel):
     human_pick: ProductCard
     ai_pick: ScoredProductCard
     ai_correct: bool
+    ai_exact: bool = False
+    ai_rank_of_pick: int = 1
+    ai_top3_ids: list[str] = Field(default_factory=list)
     human_points: int
     ai_points: int
     total_human_score: int
@@ -83,6 +89,37 @@ class RoundResultOut(BaseModel):
     ai_explanation: AIExplanation
     post_round_metrics: MetricsOut
     game_complete: bool
+
+
+class RoundStatOut(BaseModel):
+    round_number: int
+    ai_correct: bool
+    ai_rank_of_pick: int | None = None
+    ai_confidence: float = 0
+    coherence: float = 0
+    predicted_rating: float = 3.0
+    cumulative_ai: int = 0
+    cumulative_human: int = 0
+
+
+class AccuracySummary(BaseModel):
+    top3_correct: int
+    exact_correct: int
+    top3_rate: float
+    exact_rate: float
+
+
+class GameSummaryOut(BaseModel):
+    game_id: str
+    player_name: str
+    total_rounds: int
+    human_score: int
+    ai_score: int
+    accuracy: AccuracySummary
+    round_stats: list[RoundStatOut]
+    learned_preferences: list[list] = Field(default_factory=list)
+    learned_dislikes: list[list] = Field(default_factory=list)
+    top5_recommendations: list[ScoredProductCard]
 
 
 class GameStatusOut(BaseModel):
@@ -105,4 +142,15 @@ class LeaderboardEntry(BaseModel):
     ai_score: int
     score_difference: int
     rounds_completed: int
+    created_at: datetime
+
+
+class PlayerGameEntry(BaseModel):
+    game_id: str
+    player_name: str
+    human_score: int
+    ai_score: int
+    score_difference: int
+    rounds_played: int
+    ai_accuracy: float
     created_at: datetime

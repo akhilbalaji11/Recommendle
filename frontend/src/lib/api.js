@@ -1,4 +1,4 @@
-﻿const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8015').replace(/\/$/, '');
+﻿const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8016').replace(/\/$/, '');
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -63,6 +63,14 @@ export async function getGameStatus(gameId) {
 
 export async function getLeaderboard(limit = 10) {
   return request(`/api/game/leaderboard?limit=${limit}`);
+}
+
+export async function getGameSummary(gameId) {
+  return request(`/api/game/${gameId}/summary`);
+}
+
+export async function getPlayerHistory(playerName) {
+  return request(`/api/game/player/${encodeURIComponent(playerName)}/history`);
 }
 
 export function formatPrice(priceMin, priceMax) {

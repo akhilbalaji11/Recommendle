@@ -1,7 +1,6 @@
-﻿import React from 'react';
-import logo from '../assets/logo.svg';
+﻿import logo from '../assets/logo.svg';
 
-export default function WelcomeScreen({ playerName, setPlayerName, onStart, loading }) {
+export default function WelcomeScreen({ playerName, setPlayerName, onStart, loading, leaderboard, onViewPlayer }) {
   return (
     <section className="screen shell welcome-screen">
       <div className="hero">
@@ -41,6 +40,40 @@ export default function WelcomeScreen({ playerName, setPlayerName, onStart, load
           {loading ? 'Starting...' : 'Play'}
         </button>
       </div>
+
+      {/* Leaderboard on welcome page */}
+      {leaderboard && leaderboard.length > 0 && (
+        <div className="panel leaderboard-panel welcome-leaderboard">
+          <h3>Leaderboard</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Player</th>
+                <th>Human</th>
+                <th>AI</th>
+                <th>Delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leaderboard.map((entry) => (
+                <tr
+                  key={`${entry.player_name}-${entry.created_at}`}
+                  className="leaderboard-row-clickable"
+                  onClick={() => onViewPlayer && onViewPlayer(entry.player_name)}
+                  title={`View ${entry.player_name}'s stats`}
+                >
+                  <td>{entry.rank}</td>
+                  <td className="player-name-cell">{entry.player_name}</td>
+                  <td>{entry.human_score}</td>
+                  <td>{entry.ai_score}</td>
+                  <td>{entry.score_difference >= 0 ? '+' : ''}{entry.score_difference}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }

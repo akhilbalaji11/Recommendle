@@ -10,10 +10,12 @@ from ..schemas_game import (
     GameCreate,
     GameOut,
     GameStatusOut,
+    GameSummaryOut,
     LeaderboardEntry,
     OnboardingOut,
     OnboardingSubmit,
     OnboardingSubmitOut,
+    PlayerGameEntry,
     RoundPickSubmit,
     RoundResultOut,
     RoundStartOut,
@@ -29,6 +31,15 @@ async def get_leaderboard(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     return await game_service.get_leaderboard(db, limit=limit)
+
+
+@router.get("/player/{player_name}/history", response_model=List[PlayerGameEntry])
+async def get_player_history(
+    player_name: str,
+    limit: int = 20,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    return await game_service.get_player_history(db, player_name, limit=limit)
 
 
 @router.post("/start", response_model=GameOut)
@@ -118,3 +129,15 @@ async def get_game_status(
         return GameStatusOut(**status)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/{game_id}/summary", response_model=GameSummaryOut)
+async def get_game_summary(
+    game_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    try:
+        result = await game_service.get_game_summary(db, game_id)
+        return GameSummaryOut(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

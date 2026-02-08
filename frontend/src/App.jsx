@@ -1,19 +1,20 @@
-﻿import React, { useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import logo from './assets/logo.svg';
-import WelcomeScreen from './components/WelcomeScreen';
 import BrainModePanel from './components/BrainModePanel';
+import FinalSummary from './components/FinalSummary';
 import OnboardingGrid from './components/OnboardingGrid';
-import SetRatingModal from './components/SetRatingModal';
+import PlayerStatsModal from './components/PlayerStatsModal';
 import RoundArena from './components/RoundArena';
 import RoundResultPanel from './components/RoundResultPanel';
-import FinalSummary from './components/FinalSummary';
+import SetRatingModal from './components/SetRatingModal';
+import WelcomeScreen from './components/WelcomeScreen';
 import {
-  getLeaderboard,
-  getOnboarding,
-  startGame,
-  startRound,
-  submitOnboarding,
-  submitRoundPick,
+    getLeaderboard,
+    getOnboarding,
+    startGame,
+    startRound,
+    submitOnboarding,
+    submitRoundPick,
 } from './lib/api';
 
 const VIEW = {
@@ -44,6 +45,15 @@ export default function App() {
     pick: false,
     next: false,
   });
+  const [welcomeLeaderboard, setWelcomeLeaderboard] = useState([]);
+  const [viewingPlayer, setViewingPlayer] = useState(null);
+
+  // Load leaderboard for the welcome page on initial render
+  useEffect(() => {
+    getLeaderboard(10)
+      .then(setWelcomeLeaderboard)
+      .catch(() => {});
+  }, []);
 
   const totalRounds = game?.total_rounds ?? 5;
   const humanScore = game?.human_score ?? 0;
@@ -62,6 +72,10 @@ export default function App() {
     setLeaderboard([]);
     setError('');
     setBusy({ start: false, onboarding: false, pick: false, next: false });
+    // Refresh welcome leaderboard
+    getLeaderboard(10)
+      .then(setWelcomeLeaderboard)
+      .catch(() => {});
   }
 
   async function loadNextRound(gameId) {
@@ -190,6 +204,15 @@ export default function App() {
           setPlayerName={setPlayerName}
           onStart={handleStart}
           loading={busy.start}
+          leaderboard={welcomeLeaderboard}
+          onViewPlayer={(name) => setViewingPlayer(name)}
+        />
+      )}
+
+      {viewingPlayer && (
+        <PlayerStatsModal
+          playerName={viewingPlayer}
+          onClose={() => setViewingPlayer(null)}
         />
       )}
 
@@ -240,8 +263,10 @@ export default function App() {
           playerName={playerName}
           humanScore={humanScore}
           aiScore={aiScore}
+          gameId={game?.id}
           leaderboard={leaderboard}
           onRestart={resetAll}
+          onViewPlayer={(name) => setViewingPlayer(name)}
         />
       )}
     </main>

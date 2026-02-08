@@ -14,11 +14,10 @@ Usage:
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import sys
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -297,7 +296,7 @@ def generate_summary(
     lines = [
         "=" * 60,
         "  RECOMMENDLE — AI PERFORMANCE EVALUATION",
-        f"  Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+        f"  Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         "=" * 60,
         "",
         "OVERVIEW",
@@ -396,7 +395,7 @@ def main():
 
     # Also save raw data as JSON for programmatic use
     raw = {
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "accuracy": accuracy,
         "accuracy_by_round": {str(k): v for k, v in by_round.items()},
         "score_distribution": {

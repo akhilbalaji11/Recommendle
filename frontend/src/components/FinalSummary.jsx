@@ -161,9 +161,9 @@ export default function FinalSummary({
                 You Tend to Prefer
               </h4>
               <div className="tag-list">
-                {summary.learned_preferences.map(([name, weight]) => (
+                {summary.learned_preferences.map(([name]) => (
                   <span key={name} className="feature-tag positive">
-                    {name} (+{weight})
+                    {name}
                   </span>
                 ))}
               </div>
@@ -175,9 +175,9 @@ export default function FinalSummary({
                 You Tend to Avoid
               </h4>
               <div className="tag-list">
-                {summary.learned_dislikes.map(([name, weight]) => (
+                {summary.learned_dislikes.map(([name]) => (
                   <span key={name} className="feature-tag negative">
-                    {name} ({weight})
+                    {name}
                   </span>
                 ))}
               </div>
@@ -211,7 +211,7 @@ export default function FinalSummary({
       {/* Hidden Gems — latent preferences the user didn't target */}
       {summary?.hidden_preferences?.length > 0 && (
         <div className="panel hidden-gems-panel">
-          <h3>🔍 Hidden Gems — Patterns You Might Not Have Noticed</h3>
+          <h3>Hidden Gems — Patterns You Might Not Have Noticed</h3>
           {summary.hidden_gems_explanation && (
             <p className="hidden-gems-narrative">{summary.hidden_gems_explanation}</p>
           )}
@@ -233,7 +233,7 @@ export default function FinalSummary({
               <ul className="rec-list">
                 {summary.hidden_gems_products.map((gem, i) => (
                   <li key={gem.id} className="rec-item hidden-gem-item">
-                    <span className="rec-rank gem-rank">💎{i + 1}</span>
+                    <span className="rec-rank gem-rank">#{i + 1}</span>
                     <div className="rec-info">
                       <strong>{gem.title}</strong>
                       <span className="muted">{gem.vendor} · {formatPrice(gem.price_min, gem.price_max)}</span>

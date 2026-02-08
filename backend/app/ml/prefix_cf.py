@@ -161,9 +161,9 @@ class PrefixCFModel:
     # ── Hidden-preference discovery ──────────────────────────────
 
     # Tuning constants — adjust after play-testing
-    HIDDEN_MIN_WEIGHT = 0.15       # user_vec weight must exceed this (normalised)
-    HIDDEN_MIN_LATENCY = 0.10      # latency_score must exceed this
-    HIDDEN_MIN_SELECTIONS = 3      # need at least this many picks before detecting
+    HIDDEN_MIN_WEIGHT = 0.08       # user_vec weight must exceed this (normalised)
+    HIDDEN_MIN_LATENCY = 0.05      # latency_score must exceed this
+    HIDDEN_MIN_SELECTIONS = 2      # need at least this many picks before detecting
 
     def detect_hidden_preferences(
         self,

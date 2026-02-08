@@ -89,30 +89,39 @@ export default function RoundResultPanel({ result, onNext, loadingNext }) {
               What the AI Thinks You Like
             </h4>
             <div className="tag-list">
-              {ai_explanation.learned_preferences.slice(0, 6).map(([name, weight]) => (
+              {ai_explanation.learned_preferences.slice(0, 6).map(([name]) => (
                 <span key={name} className="feature-tag positive">
-                  {name} ({weight > 0 ? '+' : ''}{weight})
+                  {name}
                 </span>
               ))}
             </div>
           </div>
         )}
 
-        {ai_explanation.hidden_preferences?.length > 0 && (
-          <div style={{ marginTop: '0.75rem' }} className="hidden-patterns-hint">
-            <h4 style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent-hidden)', marginBottom: '0.4rem' }}>
-              🔍 Hidden Patterns Emerging
-            </h4>
-            <div className="tag-list">
-              {ai_explanation.hidden_preferences.map(([name]) => (
-                <span key={name} className="feature-tag hidden">{name}</span>
+        {result.round_number >= 4 && ai_explanation.hidden_preferences?.length > 0 && (() => {
+          const learnedNames = new Set(
+            (ai_explanation.learned_preferences || []).slice(0, 6).map(([n]) => n.toLowerCase())
+          );
+          const uniqueHidden = ai_explanation.hidden_preferences.filter(
+            ([n]) => !learnedNames.has(n.toLowerCase())
+          );
+          if (uniqueHidden.length === 0) return null;
+          return (
+            <div style={{ marginTop: '0.75rem' }} className="hidden-patterns-hint">
+              <h4 style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent-hidden)', marginBottom: '0.4rem' }}>
+                Hidden Patterns Emerging
+              </h4>
+              <div className="tag-list">
+                {uniqueHidden.map(([name]) => (
+                  <span key={name} className="feature-tag hidden">{name}</span>
+                ))}
+              </div>
+              {ai_explanation.hidden_preference_hints?.map((hint, i) => (
+                <p key={i} className="hint-text">{hint}</p>
               ))}
             </div>
-            {ai_explanation.hidden_preference_hints?.map((hint, i) => (
-              <p key={i} className="hint-text">{hint}</p>
-            ))}
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       <div className="metric-strip" style={{ justifyContent: 'center' }}>

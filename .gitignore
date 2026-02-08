@@ -22,6 +22,8 @@ backend/.env.*
 
 # ── Claude / Copilot ──
 .claude/
+.codex/
+.github/
 
 # ── IDE / Editor ──
 .vscode/

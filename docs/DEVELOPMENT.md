@@ -288,9 +288,9 @@ The hidden preference system identifies features the user accumulated incidental
 
 | Constant | Default | Purpose |
 |----------|---------|--------|
-| `HIDDEN_MIN_WEIGHT` | 0.15 | Minimum normalized weight to consider a feature |
-| `HIDDEN_MIN_LATENCY` | 0.10 | Minimum gap between weight and selection frequency |
-| `HIDDEN_MIN_SELECTIONS` | 3 | Minimum selections before detection activates |
+| `HIDDEN_MIN_WEIGHT` | 0.08 | Minimum normalized weight to consider a feature |
+| `HIDDEN_MIN_LATENCY` | 0.05 | Minimum gap between weight and selection frequency |
+| `HIDDEN_MIN_SELECTIONS` | 2 | Minimum selections before detection activates |
 
 ### Files Involved
 

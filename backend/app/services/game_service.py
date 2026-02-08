@@ -47,21 +47,33 @@ def humanize_feature(raw: str) -> str | None:
             opt_val = parts[2].strip().title()
             return f"{opt_val} {opt_name}"
         return raw.replace("opt::", "").title()
-    if raw == "price_min_z":
-        return "Lower Price Range"
-    if raw == "price_max_z":
-        return "Higher Price Range"
+    if raw == "price_min_z" or raw == "price_max_z":
+        # Price labels are resolved upstream in the feature_weights loop
+        return None
     return raw.title()
 
 
 def humanize_feature_list(
     raw_list: list[tuple[str, float]],
 ) -> list[tuple[str, float]]:
-    """Return a de-duped, human-readable version of [(raw_name, weight)]."""
+    """Return a de-duped, human-readable version of [(raw_name, weight)].
+
+    Price entries arrive pre-labelled ("Lower/Higher Price Range") from the
+    upstream feature_weights loop.  When both labels appear we keep only
+    the stronger one (list is already sorted by descending abs-weight).
+    """
     seen: set[str] = set()
+    price_seen = False          # keep only the first (strongest) price tag
     result: list[tuple[str, float]] = []
     for raw, weight in raw_list:
-        label = humanize_feature(raw)
+        # Pre-labelled price entries pass through directly
+        if raw in ("Lower Price Range", "Higher Price Range"):
+            if price_seen:
+                continue        # drop the weaker duplicate
+            price_seen = True
+            label = raw
+        else:
+            label = humanize_feature(raw)
         if label is None or label.lower() in seen:
             continue
         seen.add(label.lower())
@@ -713,7 +725,13 @@ class GameService:
             w = float(user_vec[idx])
             if abs(w) > 0.05:
                 fname = inv_index.get(idx, f"feature_{idx}")
-                feature_weights.append((fname, w))
+                # Price z-scores: a negative weight means user prefers
+                # cheaper pens; positive means pricier. Both are "likes".
+                if fname in ("price_min_z", "price_max_z"):
+                    price_label = "Lower Price Range" if w < 0 else "Higher Price Range"
+                    feature_weights.append((price_label, abs(w)))
+                else:
+                    feature_weights.append((fname, w))
         feature_weights.sort(key=lambda x: abs(x[1]), reverse=True)
         top_positive = humanize_feature_list([(n, round(w, 3)) for n, w in feature_weights if w > 0][:8])
         top_negative = humanize_feature_list([(n, round(w, 3)) for n, w in feature_weights if w < 0][:5])
@@ -877,7 +895,11 @@ class GameService:
             w = float(user_vec[idx])
             if abs(w) > 0.05:
                 fname = inv_index.get(idx, f"feature_{idx}")
-                feature_weights.append((fname, w))
+                if fname in ("price_min_z", "price_max_z"):
+                    price_label = "Lower Price Range" if w < 0 else "Higher Price Range"
+                    feature_weights.append((price_label, abs(w)))
+                else:
+                    feature_weights.append((fname, w))
         feature_weights.sort(key=lambda x: abs(x[1]), reverse=True)
 
         learned_likes = humanize_feature_list([(n, round(w, 3)) for n, w in feature_weights if w > 0][:10])
@@ -891,6 +913,7 @@ class GameService:
             card = self._product_card(product)
             card["score"] = float(score)
             top5_recs.append(card)
+        top5_ids = {r["id"] for r in top5_recs}
 
         # ── Hidden preference discovery (final) ─────────────────
         all_selected_ids = await self._current_selection_sequence(db, game)
@@ -907,15 +930,28 @@ class GameService:
             [(h["feature"], round(h["latency"], 3)) for h in hidden_raw]
         )
 
+        # Remove hidden prefs that already appear in learned_likes
+        learned_names = {name.lower() for name, _ in learned_likes}
+        hidden_prefs = [
+            (n, w) for n, w in hidden_prefs
+            if n.lower() not in learned_names
+        ]
+
         # Hidden gem products — pens the user didn't see but match latent tastes
+        # Exclude any products already in the top-5 recommendations
         hidden_gem_results = model.get_hidden_gem_products(
-            state, all_selected_products, all_products, top_n=5
+            state, all_selected_products, all_products, top_n=10
         )
         hidden_gems_cards = []
         for gem_score, gem_product, matched_features in hidden_gem_results:
+            pid = str(gem_product["_id"])
+            if pid in top5_ids:
+                continue
             card = self._product_card(gem_product)
             card["score"] = round(float(gem_score), 3)
             hidden_gems_cards.append(card)
+            if len(hidden_gems_cards) >= 5:
+                break
 
         # Build narrative explanation
         hidden_gems_explanation = ""

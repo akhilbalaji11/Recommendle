@@ -208,6 +208,45 @@ export default function FinalSummary({
         </div>
       )}
 
+      {/* Hidden Gems — latent preferences the user didn't target */}
+      {summary?.hidden_preferences?.length > 0 && (
+        <div className="panel hidden-gems-panel">
+          <h3>🔍 Hidden Gems — Patterns You Might Not Have Noticed</h3>
+          {summary.hidden_gems_explanation && (
+            <p className="hidden-gems-narrative">{summary.hidden_gems_explanation}</p>
+          )}
+          <div style={{ marginTop: '0.5rem' }}>
+            <h4 style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent-hidden)', marginBottom: '0.4rem' }}>
+              Hidden Preferences Detected
+            </h4>
+            <div className="tag-list">
+              {summary.hidden_preferences.map(([name]) => (
+                <span key={name} className="feature-tag hidden">{name}</span>
+              ))}
+            </div>
+          </div>
+          {summary.hidden_gems_products?.length > 0 && (
+            <div style={{ marginTop: '1rem' }}>
+              <h4 style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent-hidden)', marginBottom: '0.4rem' }}>
+                Pens You Didn't Know You'd Love
+              </h4>
+              <ul className="rec-list">
+                {summary.hidden_gems_products.map((gem, i) => (
+                  <li key={gem.id} className="rec-item hidden-gem-item">
+                    <span className="rec-rank gem-rank">💎{i + 1}</span>
+                    <div className="rec-info">
+                      <strong>{gem.title}</strong>
+                      <span className="muted">{gem.vendor} · {formatPrice(gem.price_min, gem.price_max)}</span>
+                    </div>
+                    <span className="rec-score">{gem.score.toFixed(2)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
       {loadError && <p className="muted" style={{ textAlign: 'center' }}>Could not load game insights: {loadError}</p>}
 
       {/* Leaderboard */}

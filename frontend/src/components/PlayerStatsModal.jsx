@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getPlayerHistory, getGameSummary, formatPrice } from '../lib/api';
+import { formatPrice, getGameSummary, getPlayerHistory } from '../lib/api';
 
 export default function PlayerStatsModal({ playerName, onClose }) {
   const [games, setGames] = useState([]);

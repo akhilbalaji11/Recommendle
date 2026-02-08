@@ -72,6 +72,8 @@ class AIExplanation(BaseModel):
     learned_preferences: list[list] = Field(default_factory=list)
     learned_dislikes: list[list] = Field(default_factory=list)
     shared_features: list[str] = Field(default_factory=list)
+    hidden_preferences: list[list] = Field(default_factory=list)
+    hidden_preference_hints: list[str] = Field(default_factory=list)
 
 
 class RoundResultOut(BaseModel):
@@ -120,6 +122,9 @@ class GameSummaryOut(BaseModel):
     learned_preferences: list[list] = Field(default_factory=list)
     learned_dislikes: list[list] = Field(default_factory=list)
     top5_recommendations: list[ScoredProductCard]
+    hidden_preferences: list[list] = Field(default_factory=list)
+    hidden_gems_products: list[ScoredProductCard] = Field(default_factory=list)
+    hidden_gems_explanation: str = ""
 
 
 class GameStatusOut(BaseModel):

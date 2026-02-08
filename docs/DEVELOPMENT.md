@@ -198,8 +198,10 @@ bash test_game_api.sh
 - [ ] Round start loads exactly 10 candidates.
 - [ ] User can lock one pick per round.
 - [ ] Result screen shows human pick, AI pick, round points, post-round metrics, and AI top candidate list.
+- [ ] Hidden Patterns Emerging section appears when hidden preferences are detected (typically round 3+).
 - [ ] Flow advances through all 10 rounds.
 - [ ] Final summary shows final scores and leaderboard.
+- [ ] Hidden Gems panel shows detected latent features, narrative explanation, and gem product recommendations.
 
 ### API Validation Checklist
 
@@ -270,9 +272,43 @@ The SQLite database is at `data/decidio.db`.
 
 ---
 
+## Hidden Preference Detection
+
+The hidden preference system identifies features the user accumulated incidentally (via co-occurrence) rather than intentionally.
+
+### Algorithm
+
+1. **Build a selection-frequency vector** — for each feature dimension, count how many of the user's selected products activate that dimension, then normalize to 0–1.
+2. **Normalize the user vector** — scale the model's learned `user_vec` to 0–1.
+3. **Compute latency score** — `latency[i] = normalized_weight[i] − frequency[i]`. High latency means the model learned to value a feature the user didn't directly target.
+4. **Filter** — only features with `weight ≥ 0.15`, `latency ≥ 0.10`, and `≥ 3` selections qualify. Price dimensions are excluded.
+5. **Hidden Gem products** — a masked user vector (zeroing out non-hidden dimensions) is used to score all products; those not already selected are returned as gem recommendations.
+
+### Thresholds (tunable in `prefix_cf.py`)
+
+| Constant | Default | Purpose |
+|----------|---------|--------|
+| `HIDDEN_MIN_WEIGHT` | 0.15 | Minimum normalized weight to consider a feature |
+| `HIDDEN_MIN_LATENCY` | 0.10 | Minimum gap between weight and selection frequency |
+| `HIDDEN_MIN_SELECTIONS` | 3 | Minimum selections before detection activates |
+
+### Files Involved
+
+| File | Role |
+|------|------|
+| `backend/app/ml/prefix_cf.py` | `detect_hidden_preferences()`, `get_hidden_gem_products()` |
+| `backend/app/services/game_service.py` | Integration in `submit_pick()` (progressive hints) and `get_game_summary()` (full reveal) |
+| `backend/app/schemas_game.py` | Response schemas for hidden preference data |
+| `frontend/src/components/RoundResultPanel.jsx` | "Hidden Patterns Emerging" per-round UI |
+| `frontend/src/components/FinalSummary.jsx` | "Hidden Gems" end-of-game panel |
+| `frontend/src/styles.css` | `.feature-tag.hidden`, `.hidden-gems-panel` styles |
+
+---
+
 ## Limitations & Future Work
 
 - The current model is a baseline. It can be extended with matrix factorization and global collaborative filtering across users.
 - Prefix ratings can be used to train a shared model if multiple user sessions are collected.
 - The dataset currently focuses on fountain pens only; other product categories can be added.
 - Exception mode (downweighting a selection in the user preference vector) is modeled but not yet surfaced in the game UI.
+- Hidden preference thresholds are static; they could be adaptive based on the number of rounds played or the variance in the user vector.

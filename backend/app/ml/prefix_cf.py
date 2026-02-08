@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass
-from typing import Iterable, Any
+from typing import Any, Iterable
 
 import numpy as np
 
@@ -158,3 +157,133 @@ class PrefixCFModel:
         if count == 0:
             return 0.0
         return float((total / count + 1.0) / 2.0)  # scale to 0..1
+
+    # ── Hidden-preference discovery ──────────────────────────────
+
+    # Tuning constants — adjust after play-testing
+    HIDDEN_MIN_WEIGHT = 0.15       # user_vec weight must exceed this (normalised)
+    HIDDEN_MIN_LATENCY = 0.10      # latency_score must exceed this
+    HIDDEN_MIN_SELECTIONS = 3      # need at least this many picks before detecting
+
+    def detect_hidden_preferences(
+        self,
+        state: dict,
+        selected_products: list[Any],
+        *,
+        top_n: int = 6,
+    ) -> list[dict]:
+        """Identify features the user accumulated *incidentally* rather than intentionally.
+
+        Returns a list of dicts:
+            [{"feature": raw_key, "latency": float, "weight": float}, ...]
+        sorted by latency score descending (most "hidden" first).
+        """
+        if state.get("count", 0) < self.HIDDEN_MIN_SELECTIONS or not selected_products:
+            return []
+
+        user_vec = np.array(state.get("user_vec", []), dtype=np.float32)
+        n_features = len(self.feature_space.feature_index)
+        if n_features == 0:
+            return []
+
+        # 1. Normalise user_vec to 0-1 scale  (min-max over positive dims)
+        abs_vec = np.abs(user_vec)
+        max_val = float(abs_vec.max())
+        if max_val == 0:
+            return []
+        pref_weight = abs_vec / max_val  # 0..1
+
+        # 2. Build selection-frequency vector
+        #    For each feature index, what fraction of selected products carry it?
+        freq_vec = np.zeros(n_features, dtype=np.float32)
+        for product in selected_products:
+            pvec = self.feature_space.vectorize(product)
+            freq_vec += (pvec != 0).astype(np.float32)
+        n_sel = float(len(selected_products))
+        freq_vec /= n_sel  # 0..1 — fraction of selections that have each feature
+
+        # 3. Latency = preference weight − selection frequency
+        #    High latency ⇒ the model learned this feature from co-occurrence,
+        #    not because the user explicitly targeted it.
+        latency = pref_weight - freq_vec
+
+        # 4. Filter & rank
+        inv_index = {v: k for k, v in self.feature_space.feature_index.items()}
+        results: list[dict] = []
+        for idx in range(n_features):
+            pw = float(pref_weight[idx])
+            ls = float(latency[idx])
+            if pw < self.HIDDEN_MIN_WEIGHT or ls < self.HIDDEN_MIN_LATENCY:
+                continue
+            # Skip price z-score dimensions — they aren't meaningful as "hidden" features
+            fname = inv_index.get(idx, "")
+            if fname.startswith("price_"):
+                continue
+            results.append({
+                "feature": fname,
+                "latency": round(ls, 4),
+                "weight": round(pw, 4),
+            })
+
+        results.sort(key=lambda r: r["latency"], reverse=True)
+        return results[:top_n]
+
+    def get_hidden_gem_products(
+        self,
+        state: dict,
+        selected_products: list[Any],
+        all_products: list[Any],
+        *,
+        top_n: int = 5,
+    ) -> list[tuple[float, Any, list[str]]]:
+        """Find products the user would enjoy via *hidden* preferences only.
+
+        Returns [(score, product_dict, [matched_hidden_feature_keys, ...]), ...]
+        """
+        hidden = self.detect_hidden_preferences(state, selected_products, top_n=10)
+        if not hidden:
+            return []
+
+        # Build a mask that zeroes out everything except hidden-feature dims
+        user_vec = np.array(state.get("user_vec", []), dtype=np.float32)
+        mask = np.zeros_like(user_vec)
+        hidden_indices: dict[int, str] = {}
+        for h in hidden:
+            idx = self.feature_space.feature_index.get(h["feature"])
+            if idx is not None:
+                mask[idx] = 1.0
+                hidden_indices[idx] = h["feature"]
+
+        hidden_vec = user_vec * mask
+        hidden_norm = float(np.linalg.norm(hidden_vec))
+        if hidden_norm == 0:
+            return []
+
+        # Exclude already-selected product IDs
+        selected_ids = set()
+        for p in selected_products:
+            pid = str(p.get("_id", "")) if isinstance(p, dict) else str(getattr(p, "id", ""))
+            if pid:
+                selected_ids.add(pid)
+
+        scored: list[tuple[float, Any, list[str]]] = []
+        for product in all_products:
+            pid = str(product.get("_id", "")) if isinstance(product, dict) else str(getattr(product, "id", ""))
+            if pid in selected_ids:
+                continue
+            item_vec = self.feature_space.vectorize(product)
+            item_norm = float(np.linalg.norm(item_vec))
+            if item_norm == 0:
+                continue
+            sim = float(np.dot(hidden_vec, item_vec) / (hidden_norm * item_norm))
+            # Which hidden features does this product match?
+            matched = [
+                hidden_indices[idx]
+                for idx in hidden_indices
+                if item_vec[idx] != 0
+            ]
+            if matched:
+                scored.append((sim, product, matched))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return scored[:top_n]

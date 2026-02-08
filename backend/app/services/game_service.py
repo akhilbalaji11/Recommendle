@@ -724,6 +724,32 @@ class GameService:
         shared_raw = list(set(human_features) & set(ai_features))
         shared_features = [h for h in (humanize_feature(f) for f in shared_raw) if h is not None]
 
+        # ── Hidden preference detection ──────────────────────────
+        all_selected_ids = await self._current_selection_sequence(
+            db, game, include_product_id=product_id
+        )
+        all_selected_products = await self._get_products_by_ids(
+            db,
+            all_selected_ids,
+            projection={
+                "vendor": 1, "product_type": 1, "tags": 1,
+                "options": 1, "price_min": 1, "price_max": 1,
+            },
+        )
+        hidden_raw = model.detect_hidden_preferences(state, all_selected_products)
+        hidden_prefs = humanize_feature_list(
+            [(h["feature"], round(h["latency"], 3)) for h in hidden_raw]
+        )
+        # Generate human-readable hints
+        hidden_hints: list[str] = []
+        for h in hidden_raw[:2]:
+            label = humanize_feature(h["feature"])
+            if label:
+                hidden_hints.append(
+                    f"The AI notices a hidden pattern: your picks tend to share \"{label}\" "
+                    f"even though you may not have targeted it."
+                )
+
         if ai_correct:
             if ai_exact:
                 reason = f"The AI predicted your exact pick! It ranked this product #1 out of {len(candidate_products)} candidates based on your preference profile."
@@ -796,6 +822,8 @@ class GameService:
                 "learned_preferences": top_positive,
                 "learned_dislikes": top_negative,
                 "shared_features": shared_features[:6],
+                "hidden_preferences": hidden_prefs,
+                "hidden_preference_hints": hidden_hints,
             },
             "post_round_metrics": post_metrics,
             "game_complete": game_complete,
@@ -864,6 +892,51 @@ class GameService:
             card["score"] = float(score)
             top5_recs.append(card)
 
+        # ── Hidden preference discovery (final) ─────────────────
+        all_selected_ids = await self._current_selection_sequence(db, game)
+        all_selected_products = await self._get_products_by_ids(
+            db,
+            all_selected_ids,
+            projection={
+                "vendor": 1, "product_type": 1, "tags": 1,
+                "options": 1, "price_min": 1, "price_max": 1,
+            },
+        )
+        hidden_raw = model.detect_hidden_preferences(state, all_selected_products)
+        hidden_prefs = humanize_feature_list(
+            [(h["feature"], round(h["latency"], 3)) for h in hidden_raw]
+        )
+
+        # Hidden gem products — pens the user didn't see but match latent tastes
+        hidden_gem_results = model.get_hidden_gem_products(
+            state, all_selected_products, all_products, top_n=5
+        )
+        hidden_gems_cards = []
+        for gem_score, gem_product, matched_features in hidden_gem_results:
+            card = self._product_card(gem_product)
+            card["score"] = round(float(gem_score), 3)
+            hidden_gems_cards.append(card)
+
+        # Build narrative explanation
+        hidden_gems_explanation = ""
+        if hidden_prefs:
+            feature_names = [name for name, _ in hidden_prefs[:3]]
+            if len(feature_names) == 1:
+                hidden_gems_explanation = (
+                    f"Although you may not have noticed, your choices reveal a hidden "
+                    f"affinity for \"{feature_names[0]}\". The pens below match this "
+                    f"latent pattern the AI discovered in your selections."
+                )
+            else:
+                joined = ", ".join(f'\"{n}\"' for n in feature_names[:-1])
+                joined += f' and \"{feature_names[-1]}\"'
+                hidden_gems_explanation = (
+                    f"Your choices reveal hidden patterns the AI detected: {joined}. "
+                    f"These features appeared across your selections even though you "
+                    f"likely weren't targeting them. The pens below match these "
+                    f"latent preferences."
+                )
+
         # Accuracy summary
         total = len(rounds)
         correct = sum(1 for r in rounds if r.get("ai_correct"))
@@ -885,6 +958,9 @@ class GameService:
             "learned_preferences": learned_likes,
             "learned_dislikes": learned_dislikes,
             "top5_recommendations": top5_recs,
+            "hidden_preferences": hidden_prefs,
+            "hidden_gems_products": hidden_gems_cards,
+            "hidden_gems_explanation": hidden_gems_explanation,
         }
 
     async def get_game_status(

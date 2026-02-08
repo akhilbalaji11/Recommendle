@@ -10,6 +10,7 @@
   --present-soft: #fdf6e3;
   --absent: #787c7e;
   --absent-soft: #f0f0f0;
+  --accent-hidden: #9b59b6;
 
   --ink: #1a1a1b;
   --ink-soft: #585858;
@@ -1072,6 +1073,48 @@ input:focus {
   border-color: #d4544c;
   color: #7c211e;
   background: #fdf2f1;
+}
+
+/* ── Hidden-preference styles ───────────────────────── */
+
+.feature-tag.hidden {
+  border: 1.5px dashed #9b59b6;
+  color: #6c3483;
+  background: #f5eef8;
+  animation: fadeIn 0.4s ease-out;
+}
+
+.hidden-patterns-hint {
+  border-left: 3px solid #9b59b6;
+  padding-left: 0.75rem;
+}
+
+.hint-text {
+  font-style: italic;
+  font-size: 0.74rem;
+  color: var(--ink-faint);
+  margin-top: 0.4rem;
+  line-height: 1.4;
+}
+
+.hidden-gems-panel {
+  background: linear-gradient(135deg, #faf5ff 0%, #f0e6f6 50%, #fdf2f8 100%);
+  border-color: #9b59b6;
+}
+
+.hidden-gems-narrative {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  margin: 0.4rem 0 0.5rem;
+}
+
+.hidden-gem-item {
+  border-left: 3px solid #9b59b6;
+}
+
+.gem-rank {
+  color: #9b59b6 !important;
 }
 
 /* ── Result card variants ───────────────────────────── */

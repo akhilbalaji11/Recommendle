@@ -13,6 +13,16 @@
 
 The AI uses a lightweight **prefix-based collaborative filtering** model that updates its understanding of your preferences after every pick, combining feature-space similarity (vendor, type, nib, price) with the sequential history of your choices.
 
+### Hidden Preference Discovery
+
+After enough rounds, the AI begins detecting **hidden preferences** — features that appear across your selections even though you likely weren't targeting them. For example, you might consistently pick pens that share a vendor or nib size without realizing it.
+
+- **Progressive hints** appear during rounds (typically round 3+) as "Hidden Patterns Emerging" tags.
+- **Full reveal at game end** — the Final Summary includes a "Hidden Gems" panel showing:
+  - The latent features the AI detected
+  - A narrative explanation of the patterns
+  - **Pens You Didn't Know You'd Love** — product recommendations scored against only the hidden feature dimensions
+
 ---
 
 ## Tech Stack
@@ -158,6 +168,7 @@ The recommendation engine is a **prefix-based collaborative filtering** model in
 - **Prefix ratings**: After onboarding, the user's set-level rating adjusts a per-session bias term.
 - **Candidate scoring**: Cosine similarity between the user vector and each candidate, plus the bias term.
 - **Diversity**: Onboarding pool and round candidates mix top-likelihood picks with decoy/wildcard items.
+- **Hidden preference detection**: A latency-score algorithm (`preference_weight − selection_frequency`) identifies features accumulated incidentally rather than intentionally. Products scored against only these hidden dimensions become "Hidden Gem" recommendations.
 
 ---
 

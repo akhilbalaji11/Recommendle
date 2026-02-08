@@ -51,6 +51,9 @@ backend/reports/
 *.log
 npm-debug.log*
 
+# ── Docs / PDFs ──
+*.pdf
+
 # ── Misc ──
 *.bak
 *.tmp

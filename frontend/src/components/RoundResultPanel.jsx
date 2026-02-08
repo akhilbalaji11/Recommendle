@@ -97,6 +97,22 @@ export default function RoundResultPanel({ result, onNext, loadingNext }) {
             </div>
           </div>
         )}
+
+        {ai_explanation.hidden_preferences?.length > 0 && (
+          <div style={{ marginTop: '0.75rem' }} className="hidden-patterns-hint">
+            <h4 style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent-hidden)', marginBottom: '0.4rem' }}>
+              🔍 Hidden Patterns Emerging
+            </h4>
+            <div className="tag-list">
+              {ai_explanation.hidden_preferences.map(([name]) => (
+                <span key={name} className="feature-tag hidden">{name}</span>
+              ))}
+            </div>
+            {ai_explanation.hidden_preference_hints?.map((hint, i) => (
+              <p key={i} className="hint-text">{hint}</p>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="metric-strip" style={{ justifyContent: 'center' }}>

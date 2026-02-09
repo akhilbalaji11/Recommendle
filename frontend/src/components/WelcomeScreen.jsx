@@ -1,6 +1,5 @@
-import logo from '../assets/logo.svg';
-
 export default function WelcomeScreen({
+  logoSrc,
   playerName,
   setPlayerName,
   categories = [],
@@ -18,8 +17,8 @@ export default function WelcomeScreen({
   return (
     <section className="screen shell welcome-screen">
       <div className="hero">
-        <img src={logo} alt="Recommendle" className="app-logo" style={{ marginBottom: '0.75rem' }} />
-        <h1>Can you out-pick the AI?</h1>
+        <img src={logoSrc} alt="Recommendle" className="app-logo" style={{ marginBottom: '0.75rem' }} />
+        <h1>Can you out-pick an AI model?</h1>
         <p className="subtitle">
           Build a taste profile, then go head-to-head for 5 rounds. Pick your favorite before the AI reveals its prediction.
         </p>

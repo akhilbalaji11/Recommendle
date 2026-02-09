@@ -8,8 +8,8 @@
   </defs>
 
   <!-- Wordmark -->
-  <text x="0" y="36" font-family="'Inter','Helvetica Neue',Arial,sans-serif" font-weight="800" font-size="34" fill="#1a1a1b" letter-spacing="-0.5">
-    Recommend<tspan fill="#6aaa64">le</tspan>
+  <text x="0" y="36" font-family="'Inter','Helvetica Neue',Arial,sans-serif" font-weight="800" font-size="34" fill="#f5f7fb" letter-spacing="-0.5">
+    Recommend<tspan fill="#79bf74">le</tspan>
   </text>
 
   <!-- Gradient underline accent -->

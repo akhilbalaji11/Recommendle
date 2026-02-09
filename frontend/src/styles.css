@@ -17,13 +17,40 @@
   --ink-faint: #878a8c;
   --surface: #ffffff;
   --surface-alt: #f6f7f8;
+  --surface-translucent: rgba(255, 255, 255, 0.95);
   --border: #d3d6da;
   --border-strong: #878a8c;
+  --modal-backdrop: rgba(0, 0, 0, 0.5);
 
   --radius: 6px;
   --radius-lg: 10px;
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
   --shadow-md: 0 4px 14px rgba(0,0,0,0.1);
+}
+
+body[data-theme='dark'] {
+  color-scheme: dark;
+
+  --correct: #79bf74;
+  --correct-soft: #1f3820;
+  --present: #d7c269;
+  --present-soft: #3f381d;
+  --absent: #9ca3af;
+  --absent-soft: #1f2937;
+  --accent-hidden: #c08ad8;
+
+  --ink: #e5e7eb;
+  --ink-soft: #cbd5e1;
+  --ink-faint: #94a3b8;
+  --surface: #111827;
+  --surface-alt: #1f2937;
+  --surface-translucent: rgba(17, 24, 39, 0.92);
+  --border: #374151;
+  --border-strong: #64748b;
+  --modal-backdrop: rgba(0, 0, 0, 0.72);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -36,6 +63,7 @@ body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   color: var(--ink);
   background: var(--surface);
+  transition: background 200ms ease, color 200ms ease;
 }
 
 h1, h2, h3, h4 {
@@ -69,6 +97,19 @@ button:hover {
   transform: translateY(-1px);
 }
 
+.theme-toggle {
+  position: fixed;
+  top: 0.85rem;
+  right: 1rem;
+  z-index: 10;
+  background: var(--surface-alt);
+  color: var(--ink);
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 0.45rem 0.8rem;
+  font-size: 0.72rem;
+}
+
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -89,7 +130,8 @@ input {
   border: 2px solid var(--border);
   border-radius: var(--radius);
   padding: 0.85rem 1rem;
-  background: #fff;
+  background: var(--surface);
+  color: var(--ink);
   font-size: 1rem;
   transition: border-color 120ms ease;
 }
@@ -264,7 +306,8 @@ input:focus {
   border: 2px solid var(--border);
   border-radius: var(--radius);
   padding: 0.85rem 1rem;
-  background: #fff;
+  background: var(--surface);
+  color: var(--ink);
   font-size: 1rem;
 }
 
@@ -346,7 +389,7 @@ input:focus {
   top: 0;
   z-index: 2;
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-translucent);
   backdrop-filter: blur(10px);
   padding: 0.6rem 0;
   margin-bottom: 0.75rem;
@@ -688,7 +731,7 @@ input:focus {
   position: fixed;
   inset: 0;
   z-index: 6;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--modal-backdrop);
   display: grid;
   place-items: center;
   padding: 1rem;
@@ -696,7 +739,7 @@ input:focus {
 
 .modal-card {
   width: min(420px, 100%);
-  background: #fff;
+  background: var(--surface);
   border: 2px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 1.5rem;
@@ -1518,9 +1561,45 @@ input:focus {
   margin-right: 0.3rem;
 }
 
+body[data-theme='dark'] .error-banner {
+  background: #3b1f1f;
+  color: #fecaca;
+  border-color: #f87171;
+}
+
+body[data-theme='dark'] .error-banner button {
+  color: #fecaca;
+  border-color: #f87171;
+}
+
+body[data-theme='dark'] .scoreline span:first-child {
+  color: #bbf7d0;
+}
+
+body[data-theme='dark'] .scoreline span:last-child {
+  color: #fde68a;
+}
+
+body[data-theme='dark'] .hidden-gems-panel {
+  background: linear-gradient(135deg, #2f1d3b 0%, #231936 50%, #1b172d 100%);
+}
+
+body[data-theme='dark'] .feature-tag.negative {
+  background: #3a1f1f;
+  color: #fecaca;
+  border-color: #f87171;
+}
+
 /* ── Responsive adjustments for player stats ────────── */
 
 @media (max-width: 740px) {
+  .theme-toggle {
+    top: 0.5rem;
+    right: 0.5rem;
+    font-size: 0.68rem;
+    padding: 0.4rem 0.65rem;
+  }
+
   .player-stats-card .stats-row {
     grid-template-columns: repeat(2, 1fr);
   }

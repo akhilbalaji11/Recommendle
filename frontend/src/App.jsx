@@ -1,5 +1,6 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import logo from './assets/logo.svg';
+import logoDark from './assets/logo-dark.svg';
 import BrainModePanel from './components/BrainModePanel';
 import FinalSummary from './components/FinalSummary';
 import OnboardingGrid from './components/OnboardingGrid';
@@ -25,8 +26,15 @@ const VIEW = {
   RESULT: 'result',
   FINAL: 'final',
 };
+const THEME_STORAGE_KEY = 'recommendle-theme';
 
 export default function App() {
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === 'undefined') return 'light';
+    const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
   const [view, setView] = useState(VIEW.WELCOME);
   const [playerName, setPlayerName] = useState('');
   const [categories, setCategories] = useState([]);
@@ -78,6 +86,17 @@ export default function App() {
   const totalRounds = game?.total_rounds ?? 5;
   const humanScore = game?.human_score ?? 0;
   const aiScore = game?.ai_score ?? 0;
+
+  useEffect(() => {
+    document.body.setAttribute('data-theme', theme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  }
+
+  const activeLogo = theme === 'dark' ? logoDark : logo;
 
   function resetAll() {
     setView(VIEW.WELCOME);
@@ -206,9 +225,18 @@ export default function App() {
 
   return (
     <main className="app-root">
+      <button
+        type="button"
+        className="theme-toggle"
+        onClick={toggleTheme}
+        aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+      >
+        {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+      </button>
+
       {view !== VIEW.WELCOME && (
         <header className="app-header">
-          <img src={logo} alt="Recommendle" className="app-logo" />
+          <img src={activeLogo} alt="Recommendle" className="app-logo" />
         </header>
       )}
 
@@ -229,6 +257,7 @@ export default function App() {
 
       {view === VIEW.WELCOME && (
         <WelcomeScreen
+          logoSrc={activeLogo}
           playerName={playerName}
           setPlayerName={setPlayerName}
           categories={categories}
@@ -310,3 +339,4 @@ export default function App() {
     </main>
   );
 }
+

@@ -7,16 +7,19 @@ export default function SetRatingModal({
   loading,
   onClose,
   onSubmit,
+  categoryCopy = {},
 }) {
   if (!open) {
     return null;
   }
 
+  const plural = categoryCopy.item_plural || 'products';
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Set rating">
       <div className="modal-card">
         <h3>Rate Your Initial Set</h3>
-        <p>How coherent does your selected set of 10 pens feel?</p>
+        <p>How coherent does your selected set of 10 {plural} feel?</p>
 
         <div className="rating-control">
           <input

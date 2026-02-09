@@ -7,6 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from ..db_mongo import get_db
 from ..schemas_game import (
+    CategoryOut,
     GameCreate,
     GameOut,
     GameStatusOut,
@@ -25,21 +26,36 @@ from ..services.game_service import game_service
 router = APIRouter(prefix="/api/game", tags=["game"])
 
 
+@router.get("/categories", response_model=List[CategoryOut])
+async def get_categories(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    return await game_service.get_categories(db)
+
+
 @router.get("/leaderboard", response_model=List[LeaderboardEntry])
 async def get_leaderboard(
     limit: int = 10,
+    category: str = "fountain_pens",
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    return await game_service.get_leaderboard(db, limit=limit)
+    try:
+        return await game_service.get_leaderboard(db, limit=limit, category=category)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/player/{player_name}/history", response_model=List[PlayerGameEntry])
 async def get_player_history(
     player_name: str,
     limit: int = 20,
+    category: str = "fountain_pens",
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    return await game_service.get_player_history(db, player_name, limit=limit)
+    try:
+        return await game_service.get_player_history(db, player_name, limit=limit, category=category)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/start", response_model=GameOut)
@@ -51,6 +67,7 @@ async def start_game(
         game = await game_service.create_game(
             db,
             player_name=payload.player_name,
+            category=payload.category,
             total_rounds=5,
         )
         return GameOut(**game)

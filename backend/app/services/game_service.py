@@ -9,76 +9,24 @@ import numpy as np
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from ..category_profiles import (
+    category_copy,
+    get_category_profile,
+    humanize_feature as profile_humanize_feature,
+    humanize_feature_list as profile_humanize_feature_list,
+    normalize_category,
+    numeric_preference_label,
+    supported_categories,
+)
 from ..ml.prefix_cf import PrefixCFModel
 from ..services.recommender_mongo import recommender_mongo
 
-# --------------- Feature-name humaniser ---------------
-
-_REDUNDANT_TAGS = {
-    "fountain pens", "fountain pen", "pens", "pen",
-    "ink", "inks", "writing", "stationery",
-    "hideoos", "bis-hidden", "products",
-}
-
-
 def humanize_feature(raw: str) -> str | None:
-    """Convert an internal feature key to a human-readable label.
-
-    Returns *None* for features that should be filtered out
-    (e.g. overly-generic tags like 'fountain pens').
-    """
-    if raw.startswith("vendor::"):
-        brand = raw.split("::", 1)[1].strip()
-        return brand.title()
-    if raw.startswith("type::"):
-        t = raw.split("::", 1)[1].strip()
-        if t.lower() in _REDUNDANT_TAGS:
-            return None
-        return t.title()
-    if raw.startswith("tag::"):
-        t = raw.split("::", 1)[1].strip()
-        if t.lower() in _REDUNDANT_TAGS:
-            return None
-        return t.title()
-    if raw.startswith("opt::"):
-        parts = raw.split("::")
-        if len(parts) == 3:
-            opt_name = parts[1].strip().title()
-            opt_val = parts[2].strip().title()
-            return f"{opt_val} {opt_name}"
-        return raw.replace("opt::", "").title()
-    if raw == "price_min_z" or raw == "price_max_z":
-        # Price labels are resolved upstream in the feature_weights loop
-        return None
-    return raw.title()
+    return profile_humanize_feature(raw)
 
 
-def humanize_feature_list(
-    raw_list: list[tuple[str, float]],
-) -> list[tuple[str, float]]:
-    """Return a de-duped, human-readable version of [(raw_name, weight)].
-
-    Price entries arrive pre-labelled ("Lower/Higher Price Range") from the
-    upstream feature_weights loop.  When both labels appear we keep only
-    the stronger one (list is already sorted by descending abs-weight).
-    """
-    seen: set[str] = set()
-    price_seen = False          # keep only the first (strongest) price tag
-    result: list[tuple[str, float]] = []
-    for raw, weight in raw_list:
-        # Pre-labelled price entries pass through directly
-        if raw in ("Lower Price Range", "Higher Price Range"):
-            if price_seen:
-                continue        # drop the weaker duplicate
-            price_seen = True
-            label = raw
-        else:
-            label = humanize_feature(raw)
-        if label is None or label.lower() in seen:
-            continue
-        seen.add(label.lower())
-        result.append((label, weight))
-    return result
+def humanize_feature_list(raw_list: list[tuple[str, float]]) -> list[tuple[str, float]]:
+    return profile_humanize_feature_list(raw_list)
 
 
 class GameService:
@@ -94,6 +42,8 @@ class GameService:
 
         await db.games.create_index([("status", 1), ("created_at", -1)])
         await db.games.create_index([("player_name", 1), ("created_at", -1)])
+        await db.games.create_index([("category", 1), ("status", 1), ("created_at", -1)])
+        await db.games.create_index([("category", 1), ("player_name", 1), ("created_at", -1)])
         await db.game_rounds.create_index(
             [("game_id", 1), ("round_number", 1)],
             unique=True,
@@ -101,6 +51,10 @@ class GameService:
             partialFilterExpression={"game_id": {"$type": "objectId"}},
         )
         await db.game_rounds.create_index([("game_id", 1), ("created_at", -1)])
+        await db.products.create_index([("category", 1), ("source_id", 1)], unique=True)
+        await db.products.create_index([("category", 1), ("title", 1)])
+        await db.products.create_index([("category", 1), ("vendor", 1)])
+        await db.products.create_index([("category", 1), ("release_year", 1)])
         self._indexes_ready = True
 
     async def _ensure_model(self, db: AsyncIOMotorDatabase) -> PrefixCFModel:
@@ -125,18 +79,62 @@ class GameService:
         return ObjectId(value)
 
     @staticmethod
-    def _product_card(product: dict[str, Any]) -> dict[str, Any]:
+    def _game_category(game: dict[str, Any]) -> str:
+        try:
+            return normalize_category(game.get("category"))
+        except ValueError:
+            return "fountain_pens"
+
+    @staticmethod
+    def _category_product_filter(category: str) -> dict[str, Any]:
+        if category == "fountain_pens":
+            return {"$or": [{"category": "fountain_pens"}, {"category": {"$exists": False}}]}
+        return {"category": category}
+
+    @staticmethod
+    def _category_query(category: str) -> dict[str, Any]:
+        if category == "fountain_pens":
+            return {"$or": [{"category": "fountain_pens"}, {"category": {"$exists": False}}]}
+        return {"category": category}
+
+    def _product_card(self, product: dict[str, Any], category: str | None = None) -> dict[str, Any]:
+        resolved_category = normalize_category(category or product.get("category") or "fountain_pens")
+        profile = get_category_profile(resolved_category)
         image_url = None
         images = product.get("images") or []
         if images:
             image_url = images[0].get("url")
 
+        badges: list[str] = []
+        subtitle = product.get("vendor")
+        if resolved_category == "movies":
+            release_year = product.get("release_year")
+            runtime = product.get("runtime_minutes")
+            vote_avg = product.get("vote_average")
+            if release_year:
+                badges.append(str(release_year))
+            if runtime:
+                badges.append(f"{runtime}m")
+            if vote_avg:
+                badges.append(f"{float(vote_avg):.1f}★")
+            directors = product.get("directors") or []
+            if directors:
+                subtitle = f"Dir. {directors[0]}"
+            elif product.get("vendor"):
+                subtitle = f"{profile.vendor_label}: {product.get('vendor')}"
+
         return {
             "id": str(product["_id"]),
+            "category": resolved_category,
             "title": product.get("title"),
             "vendor": product.get("vendor"),
+            "subtitle": subtitle,
             "price_min": product.get("price_min"),
             "price_max": product.get("price_max"),
+            "release_year": product.get("release_year"),
+            "runtime_minutes": product.get("runtime_minutes"),
+            "vote_average": product.get("vote_average"),
+            "meta_badges": badges,
             "tags": product.get("tags", [])[:8],
             "image_url": image_url,
         }
@@ -146,6 +144,8 @@ class GameService:
         game = await db.games.find_one({"_id": oid})
         if game is None:
             raise ValueError("Game not found")
+        if "category" not in game:
+            game["category"] = "fountain_pens"
         return game
 
     async def _get_products_by_ids(
@@ -194,12 +194,26 @@ class GameService:
             db,
             selected_ids,
             projection={
+                "category": 1,
                 "vendor": 1,
                 "product_type": 1,
                 "tags": 1,
                 "options": 1,
                 "price_min": 1,
                 "price_max": 1,
+                "release_year": 1,
+                "runtime_minutes": 1,
+                "vote_average": 1,
+                "popularity": 1,
+                "original_language": 1,
+                "certification": 1,
+                "primary_country": 1,
+                "decade_bucket": 1,
+                "runtime_bucket": 1,
+                "genres": 1,
+                "keywords": 1,
+                "production_companies": 1,
+                "directors": 1,
             },
         )
         vectors = [self.recommender.feature_space.vectorize(p) for p in products]
@@ -210,10 +224,15 @@ class GameService:
             "predicted_prefix_rating": float(predicted_prefix_rating),
         }
 
-    async def _all_products_for_scoring(self, db: AsyncIOMotorDatabase) -> list[dict[str, Any]]:
+    async def _all_products_for_scoring(
+        self,
+        db: AsyncIOMotorDatabase,
+        category: str,
+    ) -> list[dict[str, Any]]:
         cursor = db.products.find(
-            {},
+            self._category_product_filter(category),
             {
+                "category": 1,
                 "title": 1,
                 "vendor": 1,
                 "price_min": 1,
@@ -222,11 +241,29 @@ class GameService:
                 "images": 1,
                 "product_type": 1,
                 "options": 1,
+                "release_year": 1,
+                "runtime_minutes": 1,
+                "vote_average": 1,
+                "popularity": 1,
+                "original_language": 1,
+                "certification": 1,
+                "primary_country": 1,
+                "decade_bucket": 1,
+                "runtime_bucket": 1,
+                "genres": 1,
+                "keywords": 1,
+                "production_companies": 1,
+                "directors": 1,
             },
         )
         return await cursor.to_list(length=None)
 
-    def _diverse_onboarding_sample(self, all_products: list[dict[str, Any]], game_id: str) -> list[str]:
+    def _diverse_onboarding_sample(
+        self,
+        all_products: list[dict[str, Any]],
+        game_id: str,
+        category: str,
+    ) -> list[str]:
         if len(all_products) <= 50:
             return [str(p["_id"]) for p in all_products]
 
@@ -234,18 +271,23 @@ class GameService:
         products = list(all_products)
         rng.shuffle(products)
 
-        prices = sorted((p.get("price_min") or 0.0) for p in products)
-        q1 = prices[len(prices) // 3]
-        q2 = prices[(2 * len(prices)) // 3]
+        numeric_field = "price_min" if category == "fountain_pens" else "popularity"
+        values = [float(p.get(numeric_field) or 0.0) for p in products]
+        if max(values, default=0.0) == 0.0 and category == "movies":
+            numeric_field = "release_year"
+            values = [float(p.get(numeric_field) or 0.0) for p in products]
+        sorted_values = sorted(values)
+        q1 = sorted_values[len(sorted_values) // 3]
+        q2 = sorted_values[(2 * len(sorted_values)) // 3]
 
         low: list[dict[str, Any]] = []
         mid: list[dict[str, Any]] = []
         high: list[dict[str, Any]] = []
         for p in products:
-            price = p.get("price_min") or 0.0
-            if price <= q1:
+            value = float(p.get(numeric_field) or 0.0)
+            if value <= q1:
                 low.append(p)
-            elif price <= q2:
+            elif value <= q2:
                 mid.append(p)
             else:
                 high.append(p)
@@ -370,14 +412,41 @@ class GameService:
             {"$push": {"selections": str(inserted.inserted_id)}},
         )
 
+    async def get_categories(self, db: AsyncIOMotorDatabase) -> list[dict[str, Any]]:
+        pipeline = [
+            {
+                "$group": {
+                    "_id": {"$ifNull": ["$category", "fountain_pens"]},
+                    "available_count": {"$sum": 1},
+                }
+            }
+        ]
+        counts = {row["_id"]: int(row["available_count"]) for row in await db.products.aggregate(pipeline).to_list(length=None)}
+
+        results: list[dict[str, Any]] = []
+        for category in supported_categories():
+            copy = category_copy(category)
+            results.append(
+                {
+                    "id": category,
+                    "display_name": copy["display_name"],
+                    "item_singular": copy["item_singular"],
+                    "item_plural": copy["item_plural"],
+                    "available_count": counts.get(category, 0),
+                }
+            )
+        return results
+
     async def create_game(
         self,
         db: AsyncIOMotorDatabase,
         player_name: str,
+        category: str = "fountain_pens",
         total_rounds: int = 5,
     ) -> dict[str, Any]:
         await self._ensure_indexes(db)
         model = await self._ensure_model(db)
+        normalized_category = normalize_category(category)
 
         clean_name = player_name.strip()
         if not clean_name:
@@ -408,7 +477,9 @@ class GameService:
 
         now = datetime.utcnow()
         game_doc = {
+            "schema_version": 2,
             "player_name": clean_name,
+            "category": normalized_category,
             "status": "onboarding",
             "current_round": 0,
             "total_rounds": total_rounds,
@@ -431,6 +502,7 @@ class GameService:
         return {
             "id": str(game["_id"]),
             "player_name": game["player_name"],
+            "category": normalized_category,
             "status": game["status"],
             "total_rounds": game["total_rounds"],
             "human_score": game["human_score"],
@@ -440,13 +512,14 @@ class GameService:
 
     async def get_onboarding(self, db: AsyncIOMotorDatabase, game_id: str) -> dict[str, Any]:
         game = await self._get_game(db, game_id)
+        category = self._game_category(game)
         if game.get("status") == "completed":
             raise ValueError("Game is already completed")
 
         pool_ids = game.get("onboarding_pool_ids") or []
         if not pool_ids:
-            all_products = await self._all_products_for_scoring(db)
-            pool_ids = self._diverse_onboarding_sample(all_products, game_id)
+            all_products = await self._all_products_for_scoring(db, category)
+            pool_ids = self._diverse_onboarding_sample(all_products, game_id, category)
             await db.games.update_one(
                 {"_id": game["_id"]},
                 {"$set": {"onboarding_pool_ids": pool_ids, "updated_at": datetime.utcnow()}},
@@ -457,18 +530,25 @@ class GameService:
             pool_ids,
             projection={
                 "title": 1,
+                "category": 1,
                 "vendor": 1,
                 "price_min": 1,
                 "price_max": 1,
                 "tags": 1,
                 "images": 1,
+                "release_year": 1,
+                "runtime_minutes": 1,
+                "vote_average": 1,
+                "directors": 1,
             },
         )
 
         return {
             "game_id": game_id,
+            "category": category,
+            "category_copy": category_copy(category),
             "pool_size": len(products),
-            "products": [self._product_card(p) for p in products],
+            "products": [self._product_card(p, category) for p in products],
         }
 
     async def submit_onboarding(
@@ -480,6 +560,11 @@ class GameService:
     ) -> dict[str, Any]:
         game = await self._get_game(db, game_id)
         model = await self._ensure_model(db)
+        category = self._game_category(game)
+        profile = get_category_profile(category)
+        category = self._game_category(game)
+        profile = get_category_profile(category)
+        category = self._game_category(game)
 
         if game.get("onboarding_selected_ids"):
             raise ValueError("Onboarding already submitted for this game")
@@ -500,6 +585,7 @@ class GameService:
             selected_product_ids,
             projection={
                 "title": 1,
+                "category": 1,
                 "vendor": 1,
                 "price_min": 1,
                 "price_max": 1,
@@ -507,6 +593,19 @@ class GameService:
                 "images": 1,
                 "product_type": 1,
                 "options": 1,
+                "release_year": 1,
+                "runtime_minutes": 1,
+                "vote_average": 1,
+                "popularity": 1,
+                "original_language": 1,
+                "certification": 1,
+                "primary_country": 1,
+                "decade_bucket": 1,
+                "runtime_bucket": 1,
+                "genres": 1,
+                "keywords": 1,
+                "production_companies": 1,
+                "directors": 1,
             },
         )
         if len(selected_products) != 10:
@@ -544,6 +643,7 @@ class GameService:
             {
                 "$set": {
                     "status": "ready",
+                    "category": category,
                     "model_state": state,
                     "onboarding_selected_ids": selected_product_ids,
                     "onboarding_rating": int(rating),
@@ -562,6 +662,7 @@ class GameService:
     async def start_round(self, db: AsyncIOMotorDatabase, game_id: str) -> dict[str, Any]:
         game = await self._get_game(db, game_id)
         model = await self._ensure_model(db)
+        category = self._game_category(game)
 
         if len(game.get("onboarding_selected_ids", [])) != 10:
             raise ValueError("Onboarding is incomplete")
@@ -577,11 +678,25 @@ class GameService:
             products = await self._get_products_by_ids(
                 db,
                 existing.get("candidate_ids", []),
-                projection={"title": 1, "vendor": 1, "price_min": 1, "price_max": 1, "tags": 1, "images": 1},
+                projection={
+                    "title": 1,
+                    "category": 1,
+                    "vendor": 1,
+                    "price_min": 1,
+                    "price_max": 1,
+                    "tags": 1,
+                    "images": 1,
+                    "release_year": 1,
+                    "runtime_minutes": 1,
+                    "vote_average": 1,
+                    "directors": 1,
+                },
             )
             return {
                 "round_number": round_number,
-                "candidates": [self._product_card(p) for p in products],
+                "category": category,
+                "category_copy": category_copy(category),
+                "candidates": [self._product_card(p, category) for p in products],
                 "pre_round_metrics": existing.get("pre_metrics", {"coherence_score": 0.0, "predicted_prefix_rating": 3.0}),
             }
 
@@ -589,7 +704,7 @@ class GameService:
         selected_ids = await self._current_selection_sequence(db, game)
         used = set(selected_ids)
 
-        all_products = await self._all_products_for_scoring(db)
+        all_products = await self._all_products_for_scoring(db, category)
         candidates_source = [p for p in all_products if str(p["_id"]) not in used]
         if len(candidates_source) < 10:
             raise ValueError("Not enough products left to generate a round")
@@ -599,12 +714,26 @@ class GameService:
         candidate_products = await self._get_products_by_ids(
             db,
             candidate_ids,
-            projection={"title": 1, "vendor": 1, "price_min": 1, "price_max": 1, "tags": 1, "images": 1},
+            projection={
+                "title": 1,
+                "category": 1,
+                "vendor": 1,
+                "price_min": 1,
+                "price_max": 1,
+                "tags": 1,
+                "images": 1,
+                "release_year": 1,
+                "runtime_minutes": 1,
+                "vote_average": 1,
+                "directors": 1,
+            },
         )
 
         pre_metrics = await self._metrics_for_state(db, model, state, selected_ids)
 
         round_doc = {
+            "schema_version": 2,
+            "category": category,
             "game_id": game["_id"],
             "round_number": round_number,
             "candidate_ids": candidate_ids,
@@ -625,7 +754,9 @@ class GameService:
 
         return {
             "round_number": round_number,
-            "candidates": [self._product_card(p) for p in candidate_products],
+            "category": category,
+            "category_copy": category_copy(category),
+            "candidates": [self._product_card(p, category) for p in candidate_products],
             "pre_round_metrics": pre_metrics,
         }
 
@@ -638,6 +769,8 @@ class GameService:
     ) -> dict[str, Any]:
         game = await self._get_game(db, game_id)
         model = await self._ensure_model(db)
+        category = self._game_category(game)
+        profile = get_category_profile(category)
 
         if game["current_round"] >= game["total_rounds"]:
             raise ValueError("Game is already complete")
@@ -663,6 +796,7 @@ class GameService:
             candidate_ids,
             projection={
                 "title": 1,
+                "category": 1,
                 "vendor": 1,
                 "price_min": 1,
                 "price_max": 1,
@@ -670,6 +804,19 @@ class GameService:
                 "images": 1,
                 "product_type": 1,
                 "options": 1,
+                "release_year": 1,
+                "runtime_minutes": 1,
+                "vote_average": 1,
+                "popularity": 1,
+                "original_language": 1,
+                "certification": 1,
+                "primary_country": 1,
+                "decade_bucket": 1,
+                "runtime_bucket": 1,
+                "genres": 1,
+                "keywords": 1,
+                "production_companies": 1,
+                "directors": 1,
             },
         )
         by_id = {str(p["_id"]): p for p in candidate_products}
@@ -709,7 +856,7 @@ class GameService:
 
         top_candidates = []
         for score, product in scored[:5]:
-            card = self._product_card(product)
+            card = self._product_card(product, category)
             card["score"] = float(score)
             top_candidates.append(card)
 
@@ -725,11 +872,8 @@ class GameService:
             w = float(user_vec[idx])
             if abs(w) > 0.05:
                 fname = inv_index.get(idx, f"feature_{idx}")
-                # Price z-scores: a negative weight means user prefers
-                # cheaper pens; positive means pricier. Both are "likes".
-                if fname in ("price_min_z", "price_max_z"):
-                    price_label = "Lower Price Range" if w < 0 else "Higher Price Range"
-                    feature_weights.append((price_label, abs(w)))
+                if "::num::" in fname:
+                    feature_weights.append((numeric_preference_label(fname, w), abs(w)))
                 else:
                     feature_weights.append((fname, w))
         feature_weights.sort(key=lambda x: abs(x[1]), reverse=True)
@@ -750,8 +894,26 @@ class GameService:
             db,
             all_selected_ids,
             projection={
-                "vendor": 1, "product_type": 1, "tags": 1,
-                "options": 1, "price_min": 1, "price_max": 1,
+                "category": 1,
+                "vendor": 1,
+                "product_type": 1,
+                "tags": 1,
+                "options": 1,
+                "price_min": 1,
+                "price_max": 1,
+                "release_year": 1,
+                "runtime_minutes": 1,
+                "vote_average": 1,
+                "popularity": 1,
+                "original_language": 1,
+                "certification": 1,
+                "primary_country": 1,
+                "decade_bucket": 1,
+                "runtime_bucket": 1,
+                "genres": 1,
+                "keywords": 1,
+                "production_companies": 1,
+                "directors": 1,
             },
         )
         hidden_raw = model.detect_hidden_preferences(state, all_selected_products)
@@ -770,17 +932,28 @@ class GameService:
 
         if ai_correct:
             if ai_exact:
-                reason = f"The AI predicted your exact pick! It ranked this product #1 out of {len(candidate_products)} candidates based on your preference profile."
+                reason = (
+                    f"The AI predicted your exact {profile.item_singular}! "
+                    f"It ranked this title #1 out of {len(candidate_products)} candidates based on your preference profile."
+                )
             else:
                 match_rank = ai_top3_ids.index(product_id) + 1
-                reason = f"Your pick was the AI's #{match_rank} prediction. The AI successfully identified your choice within its top 3 candidates."
+                reason = (
+                    f"Your pick was the AI's #{match_rank} prediction. "
+                    f"The AI successfully identified your choice within its top 3 candidates."
+                )
         else:
-            reason = f"Your pick ranked #{ai_rank_of_pick} in the AI's predictions. The model's top pick was '{ai_pick_product.get('title', 'Unknown')}', which scored {ai_score:.2f} based on feature similarity to your profile."
+            reason = (
+                f"Your pick ranked #{ai_rank_of_pick} in the AI's predictions. "
+                f"The model's top pick was '{ai_pick_product.get('title', 'Unknown')}', "
+                f"which scored {ai_score:.2f} based on feature similarity to your profile."
+            )
 
         await db.game_rounds.update_one(
             {"_id": round_doc["_id"]},
             {
                 "$set": {
+                    "schema_version": 2,
                     "human_pick_id": product_id,
                     "ai_pick_id": ai_pick_id,
                     "ai_confidence": float(ai_score),
@@ -821,9 +994,11 @@ class GameService:
 
         return {
             "round_number": round_number,
-            "human_pick": self._product_card(human_pick_product),
+            "category": category,
+            "category_copy": category_copy(category),
+            "human_pick": self._product_card(human_pick_product, category),
             "ai_pick": {
-                **self._product_card(ai_pick_product),
+                **self._product_card(ai_pick_product, category),
                 "score": float(ai_score),
             },
             "ai_correct": ai_correct,
@@ -855,6 +1030,8 @@ class GameService:
         """Return post-game insights: round-by-round stats, learned profile, top-5 recs."""
         game = await self._get_game(db, game_id)
         model = await self._ensure_model(db)
+        category = self._game_category(game)
+        profile = get_category_profile(category)
 
         if game.get("status") != "completed":
             raise ValueError("Game is not yet completed")
@@ -895,9 +1072,8 @@ class GameService:
             w = float(user_vec[idx])
             if abs(w) > 0.05:
                 fname = inv_index.get(idx, f"feature_{idx}")
-                if fname in ("price_min_z", "price_max_z"):
-                    price_label = "Lower Price Range" if w < 0 else "Higher Price Range"
-                    feature_weights.append((price_label, abs(w)))
+                if "::num::" in fname:
+                    feature_weights.append((numeric_preference_label(fname, w), abs(w)))
                 else:
                     feature_weights.append((fname, w))
         feature_weights.sort(key=lambda x: abs(x[1]), reverse=True)
@@ -906,11 +1082,11 @@ class GameService:
         learned_dislikes = humanize_feature_list([(n, round(w, 3)) for n, w in feature_weights if w < 0][:5])
 
         # Top-5 recommended products from the full catalog
-        all_products = await self._all_products_for_scoring(db)
+        all_products = await self._all_products_for_scoring(db, category)
         scored = self._rank_candidates(model, state, all_products)
         top5_recs = []
         for score, product in scored[:5]:
-            card = self._product_card(product)
+            card = self._product_card(product, category)
             card["score"] = float(score)
             top5_recs.append(card)
         top5_ids = {r["id"] for r in top5_recs}
@@ -921,8 +1097,26 @@ class GameService:
             db,
             all_selected_ids,
             projection={
-                "vendor": 1, "product_type": 1, "tags": 1,
-                "options": 1, "price_min": 1, "price_max": 1,
+                "category": 1,
+                "vendor": 1,
+                "product_type": 1,
+                "tags": 1,
+                "options": 1,
+                "price_min": 1,
+                "price_max": 1,
+                "release_year": 1,
+                "runtime_minutes": 1,
+                "vote_average": 1,
+                "popularity": 1,
+                "original_language": 1,
+                "certification": 1,
+                "primary_country": 1,
+                "decade_bucket": 1,
+                "runtime_bucket": 1,
+                "genres": 1,
+                "keywords": 1,
+                "production_companies": 1,
+                "directors": 1,
             },
         )
         hidden_raw = model.detect_hidden_preferences(state, all_selected_products)
@@ -947,7 +1141,7 @@ class GameService:
             pid = str(gem_product["_id"])
             if pid in top5_ids:
                 continue
-            card = self._product_card(gem_product)
+            card = self._product_card(gem_product, category)
             card["score"] = round(float(gem_score), 3)
             hidden_gems_cards.append(card)
             if len(hidden_gems_cards) >= 5:
@@ -960,7 +1154,7 @@ class GameService:
             if len(feature_names) == 1:
                 hidden_gems_explanation = (
                     f"Although you may not have noticed, your choices reveal a hidden "
-                    f"affinity for \"{feature_names[0]}\". The pens below match this "
+                    f"affinity for \"{feature_names[0]}\". The {profile.item_plural} below match this "
                     f"latent pattern the AI discovered in your selections."
                 )
             else:
@@ -969,7 +1163,7 @@ class GameService:
                 hidden_gems_explanation = (
                     f"Your choices reveal hidden patterns the AI detected: {joined}. "
                     f"These features appeared across your selections even though you "
-                    f"likely weren't targeting them. The pens below match these "
+                    f"likely weren't targeting them. The {profile.item_plural} below match these "
                     f"latent preferences."
                 )
 
@@ -981,6 +1175,8 @@ class GameService:
         return {
             "game_id": str(game["_id"]),
             "player_name": game["player_name"],
+            "category": category,
+            "category_copy": category_copy(category),
             "total_rounds": total,
             "human_score": game["human_score"],
             "ai_score": game["ai_score"],
@@ -1005,6 +1201,7 @@ class GameService:
         game_id: str,
     ) -> dict[str, Any]:
         game = await self._get_game(db, game_id)
+        category = self._game_category(game)
 
         active_round = await db.game_rounds.find_one(
             {"game_id": game["_id"], "completed": False},
@@ -1015,6 +1212,8 @@ class GameService:
         return {
             "id": str(game["_id"]),
             "player_name": game["player_name"],
+            "category": category,
+            "category_copy": category_copy(category),
             "status": game["status"],
             "current_round": int(game.get("current_round", 0)),
             "total_rounds": int(game.get("total_rounds", 10)),
@@ -1025,9 +1224,15 @@ class GameService:
             "round_in_progress": active_round.get("round_number") if active_round else None,
         }
 
-    async def get_leaderboard(self, db: AsyncIOMotorDatabase, limit: int = 10) -> list[dict[str, Any]]:
+    async def get_leaderboard(
+        self,
+        db: AsyncIOMotorDatabase,
+        limit: int = 10,
+        category: str = "fountain_pens",
+    ) -> list[dict[str, Any]]:
+        normalized_category = normalize_category(category)
         pipeline = [
-            {"$match": {"status": "completed"}},
+            {"$match": {"status": "completed", **self._category_query(normalized_category)}},
             {"$addFields": {"score_difference": {"$subtract": ["$human_score", "$ai_score"]}}},
             {"$sort": {"score_difference": -1, "human_score": -1, "created_at": 1}},
             {"$limit": int(limit)},
@@ -1038,6 +1243,7 @@ class GameService:
             {
                 "rank": index + 1,
                 "player_name": game["player_name"],
+                "category": self._game_category(game),
                 "human_score": int(game["human_score"]),
                 "ai_score": int(game["ai_score"]),
                 "score_difference": int(game["human_score"] - game["ai_score"]),
@@ -1052,10 +1258,12 @@ class GameService:
         db: AsyncIOMotorDatabase,
         player_name: str,
         limit: int = 20,
+        category: str = "fountain_pens",
     ) -> list[dict[str, Any]]:
         """Return completed games for a given player, most recent first."""
+        normalized_category = normalize_category(category)
         cursor = db.games.find(
-            {"player_name": player_name, "status": "completed"},
+            {"player_name": player_name, "status": "completed", **self._category_query(normalized_category)},
         ).sort("created_at", -1).limit(limit)
         games = await cursor.to_list(length=limit)
 
@@ -1074,6 +1282,7 @@ class GameService:
             results.append({
                 "game_id": game_id,
                 "player_name": player_name,
+                "category": self._game_category(game),
                 "human_score": h,
                 "ai_score": a,
                 "score_difference": h - a,

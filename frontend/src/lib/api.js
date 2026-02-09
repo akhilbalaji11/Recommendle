@@ -23,11 +23,15 @@ async function request(path, options = {}) {
   return response.json();
 }
 
-export async function startGame(playerName) {
+export async function startGame(playerName, category = 'fountain_pens') {
   return request('/api/game/start', {
     method: 'POST',
-    body: JSON.stringify({ player_name: playerName }),
+    body: JSON.stringify({ player_name: playerName, category }),
   });
+}
+
+export async function getCategories() {
+  return request('/api/game/categories');
 }
 
 export async function getOnboarding(gameId) {
@@ -61,16 +65,18 @@ export async function getGameStatus(gameId) {
   return request(`/api/game/${gameId}/status`);
 }
 
-export async function getLeaderboard(limit = 10) {
-  return request(`/api/game/leaderboard?limit=${limit}`);
+export async function getLeaderboard(limit = 10, category = 'fountain_pens') {
+  return request(`/api/game/leaderboard?limit=${limit}&category=${encodeURIComponent(category)}`);
 }
 
 export async function getGameSummary(gameId) {
   return request(`/api/game/${gameId}/summary`);
 }
 
-export async function getPlayerHistory(playerName) {
-  return request(`/api/game/player/${encodeURIComponent(playerName)}/history`);
+export async function getPlayerHistory(playerName, category = 'fountain_pens') {
+  return request(
+    `/api/game/player/${encodeURIComponent(playerName)}/history?category=${encodeURIComponent(category)}`,
+  );
 }
 
 export function formatPrice(priceMin, priceMax) {

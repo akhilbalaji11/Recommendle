@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 from datetime import datetime
-
 from pydantic import BaseModel, Field
 
 
 class ProductCard(BaseModel):
     id: str
+    category: str = "fountain_pens"
     title: str
     vendor: str | None = None
+    subtitle: str | None = None
     price_min: float | None = None
     price_max: float | None = None
+    release_year: int | None = None
+    runtime_minutes: int | None = None
+    vote_average: float | None = None
+    meta_badges: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     image_url: str | None = None
 
@@ -22,11 +27,13 @@ class MetricsOut(BaseModel):
 
 class GameCreate(BaseModel):
     player_name: str = Field(..., min_length=1, max_length=80)
+    category: str = Field(default="fountain_pens")
 
 
 class GameOut(BaseModel):
     id: str
     player_name: str
+    category: str = "fountain_pens"
     status: str
     total_rounds: int
     human_score: int
@@ -36,7 +43,9 @@ class GameOut(BaseModel):
 
 class OnboardingOut(BaseModel):
     game_id: str
+    category: str = "fountain_pens"
     pool_size: int
+    category_copy: dict[str, str] = Field(default_factory=dict)
     products: list[ProductCard]
 
 
@@ -54,6 +63,8 @@ class OnboardingSubmitOut(BaseModel):
 
 class RoundStartOut(BaseModel):
     round_number: int
+    category: str = "fountain_pens"
+    category_copy: dict[str, str] = Field(default_factory=dict)
     candidates: list[ProductCard]
     pre_round_metrics: MetricsOut
 
@@ -78,6 +89,8 @@ class AIExplanation(BaseModel):
 
 class RoundResultOut(BaseModel):
     round_number: int
+    category: str = "fountain_pens"
+    category_copy: dict[str, str] = Field(default_factory=dict)
     human_pick: ProductCard
     ai_pick: ScoredProductCard
     ai_correct: bool
@@ -114,6 +127,8 @@ class AccuracySummary(BaseModel):
 class GameSummaryOut(BaseModel):
     game_id: str
     player_name: str
+    category: str = "fountain_pens"
+    category_copy: dict[str, str] = Field(default_factory=dict)
     total_rounds: int
     human_score: int
     ai_score: int
@@ -130,6 +145,8 @@ class GameSummaryOut(BaseModel):
 class GameStatusOut(BaseModel):
     id: str
     player_name: str
+    category: str = "fountain_pens"
+    category_copy: dict[str, str] = Field(default_factory=dict)
     status: str
     current_round: int
     total_rounds: int
@@ -143,6 +160,7 @@ class GameStatusOut(BaseModel):
 class LeaderboardEntry(BaseModel):
     rank: int
     player_name: str
+    category: str = "fountain_pens"
     human_score: int
     ai_score: int
     score_difference: int
@@ -153,9 +171,18 @@ class LeaderboardEntry(BaseModel):
 class PlayerGameEntry(BaseModel):
     game_id: str
     player_name: str
+    category: str = "fountain_pens"
     human_score: int
     ai_score: int
     score_difference: int
     rounds_played: int
     ai_accuracy: float
     created_at: datetime
+
+
+class CategoryOut(BaseModel):
+    id: str
+    display_name: str
+    item_singular: str
+    item_plural: str
+    available_count: int

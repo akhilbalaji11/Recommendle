@@ -1,12 +1,17 @@
-﻿import { formatPrice } from '../lib/api';
+import { formatPrice } from '../lib/api';
 
 function ResultCard({ label, product, variant, showScore = false }) {
+  const isMovie = product.category === 'movies';
+  const priceText = formatPrice(product.price_min, product.price_max);
+  const metaText = product.meta_badges?.length > 0 ? product.meta_badges.join(' · ') : '';
+  const secondary = product.subtitle || product.vendor || 'Unknown';
+
   return (
     <div className={`result-card ${variant}`}>
       <h4>{label}</h4>
       <p className="result-title">{product.title}</p>
       <p className="muted">
-        {product.vendor || 'Unknown vendor'} · {formatPrice(product.price_min, product.price_max)}
+        {secondary}{isMovie && metaText ? ` · ${metaText}` : (!isMovie ? ` · ${priceText}` : '')}
       </p>
       {showScore && product.score != null && (
         <p className="score-pill">AI Score {product.score.toFixed(2)}</p>
@@ -19,15 +24,16 @@ function FeatureTag({ name }) {
   return <span className="feature-tag">{name}</span>;
 }
 
-export default function RoundResultPanel({ result, onNext, loadingNext }) {
+export default function RoundResultPanel({ result, categoryCopy = {}, onNext, loadingNext }) {
   if (!result) return null;
 
   const { ai_correct, ai_exact, ai_rank_of_pick, ai_explanation, post_round_metrics } = result;
+  const singular = categoryCopy.item_singular || 'item';
 
   const outcomeClass = ai_correct ? 'outcome-ai' : 'outcome-human';
   const outcomeText = ai_correct
     ? (ai_exact ? 'AI Exact Match!' : `AI Top-3 Hit (Rank #${ai_rank_of_pick})`)
-    : `AI Missed — Your pick was #${ai_rank_of_pick}`;
+    : `AI Missed - Your pick was #${ai_rank_of_pick}`;
 
   return (
     <section className="screen shell">
@@ -42,13 +48,13 @@ export default function RoundResultPanel({ result, onNext, loadingNext }) {
       <header className="section-header">
         <div>
           <p className="eyebrow">Round {result.round_number} Results</p>
-          <h2>Score: You {result.total_human_score} — AI {result.total_ai_score}</h2>
+          <h2>Score: You {result.total_human_score} - AI {result.total_ai_score}</h2>
         </div>
       </header>
 
       <div className="result-grid">
-        <ResultCard label="Your Pick" product={result.human_pick} variant="human-pick" />
-        <ResultCard label="AI's #1 Pick" product={result.ai_pick} variant="ai-pick" showScore />
+        <ResultCard label={`Your ${singular}`} product={result.human_pick} variant="human-pick" />
+        <ResultCard label={`AI's #1 ${singular}`} product={result.ai_pick} variant="ai-pick" showScore />
       </div>
 
       <div className="panel result-details">
@@ -100,10 +106,10 @@ export default function RoundResultPanel({ result, onNext, loadingNext }) {
 
         {result.round_number >= 4 && ai_explanation.hidden_preferences?.length > 0 && (() => {
           const learnedNames = new Set(
-            (ai_explanation.learned_preferences || []).slice(0, 6).map(([n]) => n.toLowerCase())
+            (ai_explanation.learned_preferences || []).slice(0, 6).map(([n]) => n.toLowerCase()),
           );
           const uniqueHidden = ai_explanation.hidden_preferences.filter(
-            ([n]) => !learnedNames.has(n.toLowerCase())
+            ([n]) => !learnedNames.has(n.toLowerCase()),
           );
           if (uniqueHidden.length === 0) return null;
           return (
@@ -131,7 +137,7 @@ export default function RoundResultPanel({ result, onNext, loadingNext }) {
 
       <div className="round-actions">
         <button type="button" onClick={onNext} disabled={loadingNext}>
-          {loadingNext ? 'Loading...' : result.game_complete ? 'View Final Summary' : 'Next Round →'}
+          {loadingNext ? 'Loading...' : result.game_complete ? 'View Final Summary' : 'Next Round ->'}
         </button>
       </div>
     </section>

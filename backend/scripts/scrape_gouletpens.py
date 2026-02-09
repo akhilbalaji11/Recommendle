@@ -52,6 +52,8 @@ def normalize_product(raw: dict) -> dict:
     images = raw.get("images", [])
 
     return {
+        "category": "fountain_pens",
+        "schema_version": 2,
         "source_id": str(raw.get("id")),
         "title": raw.get("title"),
         "handle": raw.get("handle"),

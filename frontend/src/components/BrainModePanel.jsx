@@ -1,6 +1,9 @@
-﻿import React from 'react';
+import React from 'react';
 
-export default function BrainModePanel({ mode, onModeChange }) {
+export default function BrainModePanel({ mode, onModeChange, categoryCopy = {} }) {
+  const caption = categoryCopy.mode_caption
+    || 'Visual mode prioritizes product imagery. Feature mode emphasizes vendor, price, and tag signals.';
+
   return (
     <div className="brain-mode-panel">
       <div className="mode-buttons" role="tablist" aria-label="Explore mode">
@@ -22,7 +25,7 @@ export default function BrainModePanel({ mode, onModeChange }) {
         </button>
       </div>
       <p className="mode-caption">
-        Visual mode prioritizes product imagery. Feature mode emphasizes vendor, price, and tag signals.
+        {caption}
       </p>
     </div>
   );

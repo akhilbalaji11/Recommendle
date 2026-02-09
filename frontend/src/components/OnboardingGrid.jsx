@@ -7,13 +7,16 @@ export default function OnboardingGrid({
   onToggle,
   onOpenRating,
   mode,
+  categoryCopy = {},
 }) {
+  const plural = categoryCopy.item_plural || 'products';
+
   return (
     <section className="screen shell">
       <header className="section-header">
         <div>
           <p className="eyebrow">Onboarding</p>
-          <h2>Choose 10 from 50 products</h2>
+          <h2>Choose 10 from 50 {plural}</h2>
         </div>
         <div className="counter-block">
           <span>{selectedIds.length}/10 selected</span>

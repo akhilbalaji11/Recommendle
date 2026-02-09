@@ -259,6 +259,15 @@ input:focus {
   letter-spacing: 0.04em;
 }
 
+.start-form select {
+  width: 100%;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  background: #fff;
+  font-size: 1rem;
+}
+
 .start-form button {
   width: 100%;
   padding: 1rem;

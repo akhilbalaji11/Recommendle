@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import math
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Iterable
 
 import numpy as np
+
+from ..category_profiles import (
+    DEFAULT_CATEGORY,
+    extract_feature_tokens,
+    is_numeric_feature_key,
+)
 
 # Try to import MongoDB models, fall back to SQLAlchemy for backward compatibility
 try:
@@ -16,50 +23,45 @@ except ImportError:
 @dataclass
 class FeatureSpace:
     feature_index: dict[str, int]
-    mean_price: float
-    std_price: float
+    numeric_stats: dict[str, tuple[float, float]]
+
+    @staticmethod
+    def _category_of(product: Any) -> str:
+        if isinstance(product, dict):
+            value = product.get("category")
+        else:
+            value = getattr(product, "category", None)
+        if not value:
+            return DEFAULT_CATEGORY
+        return str(value).strip().lower()
 
     @classmethod
     def build(cls, products: Iterable[Product]) -> "FeatureSpace":
         feature_index: dict[str, int] = {}
-        prices = []
+        numeric_values: dict[str, list[float]] = defaultdict(list)
 
         def add_feature(name: str):
             if name not in feature_index:
                 feature_index[name] = len(feature_index)
 
         for product in products:
-            # Handle both dict-like and attribute access
-            vendor = product.get("vendor") if isinstance(product, dict) else getattr(product, "vendor", None)
-            product_type = product.get("product_type") if isinstance(product, dict) else getattr(product, "product_type", None)
-            tags = product.get("tags", []) if isinstance(product, dict) else (product.tags() if callable(getattr(product, "tags", None)) else getattr(product, "tags", []))
-            options = product.get("options", {}) if isinstance(product, dict) else (product.options() if callable(getattr(product, "options", None)) else getattr(product, "options", {}))
-            price_min = product.get("price_min") if isinstance(product, dict) else getattr(product, "price_min", None)
-            price_max = product.get("price_max") if isinstance(product, dict) else getattr(product, "price_max", None)
+            category = cls._category_of(product)
+            tokens, nums = extract_feature_tokens(product, category)
+            for token in tokens:
+                add_feature(token)
+            for numeric_key, value in nums.items():
+                add_feature(numeric_key)
+                numeric_values[numeric_key].append(value)
 
-            if vendor:
-                add_feature(f"vendor::{vendor.lower()}")
-            if product_type:
-                add_feature(f"type::{product_type.lower()}")
-            for tag in tags:
-                add_feature(f"tag::{tag.lower()}")
-            for opt_name, opt_values in options.items():
-                for value in opt_values:
-                    add_feature(f"opt::{opt_name.lower()}::{value.lower()}")
-            if price_min is not None:
-                prices.append(price_min)
-            if price_max is not None:
-                prices.append(price_max)
+        stats: dict[str, tuple[float, float]] = {}
+        for numeric_key, values in numeric_values.items():
+            mean = float(np.mean(values)) if values else 0.0
+            std = float(np.std(values)) if values else 1.0
+            if std == 0:
+                std = 1.0
+            stats[numeric_key] = (mean, std)
 
-        mean_price = float(np.mean(prices)) if prices else 0.0
-        std_price = float(np.std(prices)) if prices else 1.0
-        if std_price == 0:
-            std_price = 1.0
-
-        add_feature("price_min_z")
-        add_feature("price_max_z")
-
-        return cls(feature_index=feature_index, mean_price=mean_price, std_price=std_price)
+        return cls(feature_index=feature_index, numeric_stats=stats)
 
     def vectorize(self, product: Any) -> np.ndarray:
         """Vectorize a product (works with both MongoDB and SQLAlchemy models)."""
@@ -70,30 +72,15 @@ class FeatureSpace:
             if idx is not None:
                 vec[idx] = value
 
-        # Handle both dict-like and attribute access
-        vendor = product.get("vendor") if isinstance(product, dict) else getattr(product, "vendor", None)
-        product_type = product.get("product_type") if isinstance(product, dict) else getattr(product, "product_type", None)
-        tags = product.get("tags", []) if isinstance(product, dict) else (product.tags() if callable(getattr(product, "tags", None)) else getattr(product, "tags", []))
-        options = product.get("options", {}) if isinstance(product, dict) else (product.options() if callable(getattr(product, "options", None)) else getattr(product, "options", {}))
-        price_min = product.get("price_min") if isinstance(product, dict) else getattr(product, "price_min", None)
-        price_max = product.get("price_max") if isinstance(product, dict) else getattr(product, "price_max", None)
+        category = self._category_of(product)
+        tokens, nums = extract_feature_tokens(product, category)
+        for token in tokens:
+            set_feature(token, 1.0)
 
-        if vendor:
-            set_feature(f"vendor::{vendor.lower()}")
-        if product_type:
-            set_feature(f"type::{product_type.lower()}")
-        for tag in tags:
-            set_feature(f"tag::{tag.lower()}")
-        for opt_name, opt_values in options.items():
-            for value in opt_values:
-                set_feature(f"opt::{opt_name.lower()}::{value.lower()}")
-
-        if price_min is not None:
-            z = (price_min - self.mean_price) / self.std_price
-            set_feature("price_min_z", float(z))
-        if price_max is not None:
-            z = (price_max - self.mean_price) / self.std_price
-            set_feature("price_max_z", float(z))
+        for numeric_key, raw_value in nums.items():
+            mean, std = self.numeric_stats.get(numeric_key, (0.0, 1.0))
+            z = (float(raw_value) - mean) / std
+            set_feature(numeric_key, float(z))
 
         return vec
 
@@ -215,9 +202,9 @@ class PrefixCFModel:
             ls = float(latency[idx])
             if pw < self.HIDDEN_MIN_WEIGHT or ls < self.HIDDEN_MIN_LATENCY:
                 continue
-            # Skip price z-score dimensions — they aren't meaningful as "hidden" features
             fname = inv_index.get(idx, "")
-            if fname.startswith("price_"):
+            # Numeric dimensions are noisy and not user-facing as hidden tags.
+            if is_numeric_feature_key(fname):
                 continue
             results.append({
                 "feature": fname,

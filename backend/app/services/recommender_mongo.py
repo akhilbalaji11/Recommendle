@@ -5,6 +5,7 @@ import random
 from typing import Any
 
 import numpy as np
+from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from ..ml.prefix_cf import FeatureSpace, PrefixCFModel
@@ -49,8 +50,11 @@ class RecommenderMongo:
 
     async def save_state(self, db: AsyncIOMotorDatabase, session_id: str, state: dict) -> None:
         """Save state to session document."""
+        sid: str | ObjectId = session_id
+        if ObjectId.is_valid(session_id):
+            sid = ObjectId(session_id)
         await db.sessions.update_one(
-            {"_id": session_id},
+            {"_id": sid},
             {"$set": {"state": state}}
         )
 
@@ -96,12 +100,21 @@ class RecommenderMongo:
 
         state = self.load_state(session)
 
-        # Get selected product IDs
+        # Session stores selection document IDs; resolve to selected product IDs.
         selection_ids = session.get("selections", [])
-        selected_ids = set(selection_ids)
+        selected_product_ids: set[str] = set()
+        if selection_ids:
+            selection_object_ids = [ObjectId(sid) for sid in selection_ids if ObjectId.is_valid(sid)]
+            if selection_object_ids:
+                selections = await db.selections.find(
+                    {"_id": {"$in": selection_object_ids}},
+                    {"product_id": 1},
+                ).to_list(length=None)
+                selected_product_ids = {str(row.get("product_id")) for row in selections if row.get("product_id")}
 
         # Get candidate products (not already selected)
-        products_cursor = db.products.find({"_id": {"$nin": [ObjectId(sid) for sid in selection_ids]}})
+        excluded_object_ids = [ObjectId(pid) for pid in selected_product_ids if ObjectId.is_valid(pid)]
+        products_cursor = db.products.find({"_id": {"$nin": excluded_object_ids}})
         candidates = [Product(**p) for p in await products_cursor.to_list(length=None)]
 
         # Get predicted ratings from PBCF
@@ -109,7 +122,7 @@ class RecommenderMongo:
         predicted_ratings = await self.pbcf.predict_user_ratings(db, user_id)
 
         # Build current prefix
-        current_prefix = "-".join(selection_ids) if selection_ids else ""
+        current_prefix = "-".join(sorted(selected_product_ids)) if selected_product_ids else ""
 
         # Score candidates
         scored = []
@@ -139,7 +152,7 @@ class RecommenderMongo:
         # Calculate metrics
         selected_vecs = [
             self.item_vectors[sid]
-            for sid in selection_ids
+            for sid in selected_product_ids
             if sid in self.item_vectors
         ]
         coherence = self.model.coherence_score(selected_vecs)

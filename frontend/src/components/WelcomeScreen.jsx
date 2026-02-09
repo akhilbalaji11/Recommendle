@@ -1,6 +1,20 @@
-﻿import logo from '../assets/logo.svg';
+import logo from '../assets/logo.svg';
 
-export default function WelcomeScreen({ playerName, setPlayerName, onStart, loading, leaderboard, onViewPlayer }) {
+export default function WelcomeScreen({
+  playerName,
+  setPlayerName,
+  categories = [],
+  selectedCategory,
+  setSelectedCategory,
+  onStart,
+  loading,
+  leaderboard,
+  onViewPlayer,
+}) {
+  const activeCategory = categories.find((c) => c.id === selectedCategory);
+  const plural = activeCategory?.item_plural || 'items';
+  const singular = activeCategory?.item_singular || 'item';
+
   return (
     <section className="screen shell welcome-screen">
       <div className="hero">
@@ -14,7 +28,7 @@ export default function WelcomeScreen({ playerName, setPlayerName, onStart, load
       <div className="how-to-play">
         <div className="step-tile">
           <div className="step-num">1</div>
-          <p>Choose 10 pens from a pool of 50 to build your taste profile.</p>
+          <p>Choose 10 {plural} from a pool of 50 to build your taste profile.</p>
         </div>
         <div className="step-tile">
           <div className="step-num">2</div>
@@ -22,7 +36,7 @@ export default function WelcomeScreen({ playerName, setPlayerName, onStart, load
         </div>
         <div className="step-tile">
           <div className="step-num">3</div>
-          <p>Pick your favorite each round — see if the AI can match you.</p>
+          <p>Pick your favorite {singular} each round and see if the AI can match you.</p>
         </div>
       </div>
 
@@ -36,12 +50,27 @@ export default function WelcomeScreen({ playerName, setPlayerName, onStart, load
           maxLength={80}
           disabled={loading}
         />
+
+        <label htmlFor="category-select">Category</label>
+        <select
+          id="category-select"
+          className="category-select"
+          value={selectedCategory}
+          onChange={(event) => setSelectedCategory(event.target.value)}
+          disabled={loading || categories.length === 0}
+        >
+          {categories.map((category) => (
+            <option key={category.id} value={category.id} disabled={category.available_count < 50}>
+              {category.display_name} ({category.available_count}){category.available_count < 50 ? ' - ingest required' : ''}
+            </option>
+          ))}
+        </select>
+
         <button type="button" onClick={onStart} disabled={loading || !playerName.trim()}>
           {loading ? 'Starting...' : 'Play'}
         </button>
       </div>
 
-      {/* Leaderboard on welcome page */}
       {leaderboard && leaderboard.length > 0 && (
         <div className="panel leaderboard-panel welcome-leaderboard">
           <h3>Leaderboard</h3>

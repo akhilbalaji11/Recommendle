@@ -60,3 +60,6 @@ npm-debug.log*
 *.bak
 *.tmp
 nul
+
+backend/backups/
+backend/data/tmdb_ingest_checkpoint.json

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { formatPrice, getGameSummary } from '../lib/api';
 
 function MiniBarChart({ data, label, color }) {
@@ -26,24 +26,16 @@ function MiniBarChart({ data, label, color }) {
 
 function ScoreChart({ roundStats }) {
   if (!roundStats || roundStats.length === 0) return null;
-  const maxScore = Math.max(
-    ...roundStats.map((r) => Math.max(r.cumulative_human, r.cumulative_ai)),
-    10,
-  );
+  const maxScore = Math.max(...roundStats.map((r) => Math.max(r.cumulative_human, r.cumulative_ai)), 10);
   const w = 280;
   const h = 120;
   const pad = 24;
   const plotW = w - pad * 2;
   const plotH = h - pad * 2;
 
-  const humanPts = roundStats.map((r, i) => {
+  const pointsFor = (key) => roundStats.map((r, i) => {
     const x = pad + (i / (roundStats.length - 1 || 1)) * plotW;
-    const y = pad + plotH - (r.cumulative_human / maxScore) * plotH;
-    return `${x},${y}`;
-  });
-  const aiPts = roundStats.map((r, i) => {
-    const x = pad + (i / (roundStats.length - 1 || 1)) * plotW;
-    const y = pad + plotH - (r.cumulative_ai / maxScore) * plotH;
+    const y = pad + plotH - (r[key] / maxScore) * plotH;
     return `${x},${y}`;
   });
 
@@ -53,29 +45,26 @@ function ScoreChart({ roundStats }) {
       <svg viewBox={`0 0 ${w} ${h}`} className="line-chart">
         <line x1={pad} y1={pad} x2={pad} y2={pad + plotH} stroke="var(--border)" />
         <line x1={pad} y1={pad + plotH} x2={pad + plotW} y2={pad + plotH} stroke="var(--border)" />
-        <polyline points={humanPts.join(' ')} fill="none" stroke="var(--correct)" strokeWidth="2.5" />
-        <polyline points={aiPts.join(' ')} fill="none" stroke="var(--present)" strokeWidth="2.5" />
-        {roundStats.map((r, i) => {
-          const x = pad + (i / (roundStats.length - 1 || 1)) * plotW;
-          return (
-            <text key={i} x={x} y={pad + plotH + 14} textAnchor="middle" fontSize="9" fill="var(--ink-faint)">
-              R{r.round_number}
-            </text>
-          );
-        })}
-        <circle cx={pad + 10} cy={8} r="4" fill="var(--correct)" />
-        <text x={pad + 18} y={11} fontSize="8" fill="var(--ink-soft)">You</text>
-        <circle cx={pad + 50} cy={8} r="4" fill="var(--present)" />
-        <text x={pad + 58} y={11} fontSize="8" fill="var(--ink-soft)">AI</text>
+        <polyline points={pointsFor('cumulative_human').join(' ')} fill="none" stroke="var(--correct)" strokeWidth="2.5" />
+        <polyline points={pointsFor('cumulative_ai').join(' ')} fill="none" stroke="var(--present)" strokeWidth="2.5" />
       </svg>
     </div>
   );
+}
+
+function recMeta(rec) {
+  if (rec.category === 'movies') {
+    if (rec.meta_badges?.length > 0) return rec.meta_badges.join(' · ');
+    return rec.subtitle || rec.vendor || 'Unknown';
+  }
+  return `${rec.vendor || 'Unknown'} · ${formatPrice(rec.price_min, rec.price_max)}`;
 }
 
 export default function FinalSummary({
   playerName,
   humanScore,
   aiScore,
+  category,
   gameId,
   leaderboard,
   onRestart,
@@ -90,6 +79,12 @@ export default function FinalSummary({
       .then(setSummary)
       .catch((err) => setLoadError(err.message));
   }, [gameId]);
+
+  const copy = summary?.category_copy || {};
+  const plural = copy.item_plural || (category === 'movies' ? 'movies' : 'products');
+  const topLabel = copy.top_recommendations_label || "AI's Top 5 Picks for You";
+  const hiddenLabel = copy.hidden_gems_label || 'Hidden Gems - Patterns You Might Not Have Noticed';
+  const hiddenSubtitle = copy.hidden_gems_subtitle || 'Items You Did Not Know You Would Love';
 
   const delta = humanScore - aiScore;
   let verdict = 'Tie Game';
@@ -113,10 +108,9 @@ export default function FinalSummary({
       <header className="section-header" style={{ textAlign: 'center', justifyContent: 'center', flexDirection: 'column', alignItems: 'center' }}>
         <p className="eyebrow">Game Over</p>
         <h2 style={{ fontSize: 'clamp(1.6rem, 4vw, 2.4rem)' }}>{verdict}</h2>
-        <p className="muted">{playerName} · Final Score: You {humanScore} — AI {aiScore}</p>
+        <p className="muted">{playerName} · Final Score: You {humanScore} - AI {aiScore}</p>
       </header>
 
-      {/* Accuracy stats */}
       {summary && (
         <div className="stats-row">
           <div className="stat-card">
@@ -134,24 +128,14 @@ export default function FinalSummary({
         </div>
       )}
 
-      {/* Charts row */}
       {summary && (
         <div className="charts-row">
           <ScoreChart roundStats={summary.round_stats} />
-          <MiniBarChart
-            data={roundAccuracyData}
-            label="AI Correct by Round"
-            color="var(--correct)"
-          />
-          <MiniBarChart
-            data={coherenceData}
-            label="Preference Coherence"
-            color="var(--present)"
-          />
+          <MiniBarChart data={roundAccuracyData} label="AI Correct by Round" color="var(--correct)" />
+          <MiniBarChart data={coherenceData} label="Preference Coherence" color="var(--present)" />
         </div>
       )}
 
-      {/* What the AI learned */}
       {summary && (summary.learned_preferences?.length > 0 || summary.learned_dislikes?.length > 0) && (
         <div className="panel">
           <h3>What the AI Learned About You</h3>
@@ -162,9 +146,7 @@ export default function FinalSummary({
               </h4>
               <div className="tag-list">
                 {summary.learned_preferences.map(([name]) => (
-                  <span key={name} className="feature-tag positive">
-                    {name}
-                  </span>
+                  <span key={name} className="feature-tag positive">{name}</span>
                 ))}
               </div>
             </div>
@@ -176,9 +158,7 @@ export default function FinalSummary({
               </h4>
               <div className="tag-list">
                 {summary.learned_dislikes.map(([name]) => (
-                  <span key={name} className="feature-tag negative">
-                    {name}
-                  </span>
+                  <span key={name} className="feature-tag negative">{name}</span>
                 ))}
               </div>
             </div>
@@ -186,12 +166,11 @@ export default function FinalSummary({
         </div>
       )}
 
-      {/* Top 5 Recommendations */}
       {summary?.top5_recommendations?.length > 0 && (
         <div className="panel">
-          <h3>AI's Top 5 Picks for You</h3>
+          <h3>{topLabel}</h3>
           <p className="muted" style={{ marginBottom: '0.75rem' }}>
-            Based on everything the model learned, these are the products it thinks you'd love most.
+            Based on everything the model learned, these are the {plural} it thinks you would love most.
           </p>
           <ul className="rec-list">
             {summary.top5_recommendations.map((rec, i) => (
@@ -199,7 +178,7 @@ export default function FinalSummary({
                 <span className="rec-rank">#{i + 1}</span>
                 <div className="rec-info">
                   <strong>{rec.title}</strong>
-                  <span className="muted">{rec.vendor} · {formatPrice(rec.price_min, rec.price_max)}</span>
+                  <span className="muted">{recMeta(rec)}</span>
                 </div>
                 <span className="rec-score">{rec.score.toFixed(2)}</span>
               </li>
@@ -208,13 +187,10 @@ export default function FinalSummary({
         </div>
       )}
 
-      {/* Hidden Gems — latent preferences the user didn't target */}
       {summary?.hidden_preferences?.length > 0 && (
         <div className="panel hidden-gems-panel">
-          <h3>Hidden Gems — Patterns You Might Not Have Noticed</h3>
-          {summary.hidden_gems_explanation && (
-            <p className="hidden-gems-narrative">{summary.hidden_gems_explanation}</p>
-          )}
+          <h3>{hiddenLabel}</h3>
+          {summary.hidden_gems_explanation && <p className="hidden-gems-narrative">{summary.hidden_gems_explanation}</p>}
           <div style={{ marginTop: '0.5rem' }}>
             <h4 style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent-hidden)', marginBottom: '0.4rem' }}>
               Hidden Preferences Detected
@@ -228,7 +204,7 @@ export default function FinalSummary({
           {summary.hidden_gems_products?.length > 0 && (
             <div style={{ marginTop: '1rem' }}>
               <h4 style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent-hidden)', marginBottom: '0.4rem' }}>
-                Pens You Didn't Know You'd Love
+                {hiddenSubtitle}
               </h4>
               <ul className="rec-list">
                 {summary.hidden_gems_products.map((gem, i) => (
@@ -236,7 +212,7 @@ export default function FinalSummary({
                     <span className="rec-rank gem-rank">#{i + 1}</span>
                     <div className="rec-info">
                       <strong>{gem.title}</strong>
-                      <span className="muted">{gem.vendor} · {formatPrice(gem.price_min, gem.price_max)}</span>
+                      <span className="muted">{recMeta(gem)}</span>
                     </div>
                     <span className="rec-score">{gem.score.toFixed(2)}</span>
                   </li>
@@ -249,7 +225,6 @@ export default function FinalSummary({
 
       {loadError && <p className="muted" style={{ textAlign: 'center' }}>Could not load game insights: {loadError}</p>}
 
-      {/* Leaderboard */}
       <div className="panel leaderboard-panel">
         <h3>Leaderboard</h3>
         {leaderboard.length === 0 ? (

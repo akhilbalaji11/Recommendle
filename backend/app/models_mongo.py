@@ -48,14 +48,29 @@ class ProductImage(MongoModel):
 class Product(MongoModel):
     source_id: str = Field(..., index=True)
     title: str
-    handle: str
-    vendor: str
-    product_type: str
+    category: str = "fountain_pens"
+    handle: Optional[str] = None
+    vendor: Optional[str] = None
+    product_type: Optional[str] = None
     price_min: Optional[float] = None
     price_max: Optional[float] = None
     currency: str = "USD"
     tags: list[str] = Field(default_factory=list)
     options: dict[str, list[str]] = Field(default_factory=dict)
+    # Movie-specific normalized fields (still stored in products collection).
+    release_year: Optional[int] = None
+    runtime_minutes: Optional[int] = None
+    vote_average: Optional[float] = None
+    popularity: Optional[float] = None
+    original_language: Optional[str] = None
+    certification: Optional[str] = None
+    primary_country: Optional[str] = None
+    decade_bucket: Optional[str] = None
+    runtime_bucket: Optional[str] = None
+    genres: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    production_companies: list[str] = Field(default_factory=list)
+    directors: list[str] = Field(default_factory=list)
     description: Optional[str] = None
     url: Optional[str] = None
     images: list[ProductImage] = Field(default_factory=list)
@@ -98,14 +113,28 @@ class ProductOut(BaseModel):
     id: str
     source_id: str
     title: str
-    handle: str
-    vendor: str
-    product_type: str
+    category: str = "fountain_pens"
+    handle: Optional[str] = None
+    vendor: Optional[str] = None
+    product_type: Optional[str] = None
     price_min: Optional[float] = None
     price_max: Optional[float] = None
     currency: str
     tags: list[str]
     options: dict[str, list[str]]
+    release_year: Optional[int] = None
+    runtime_minutes: Optional[int] = None
+    vote_average: Optional[float] = None
+    popularity: Optional[float] = None
+    original_language: Optional[str] = None
+    certification: Optional[str] = None
+    primary_country: Optional[str] = None
+    decade_bucket: Optional[str] = None
+    runtime_bucket: Optional[str] = None
+    genres: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    production_companies: list[str] = Field(default_factory=list)
+    directors: list[str] = Field(default_factory=list)
     description: Optional[str] = None
     url: Optional[str] = None
     images: list[ProductImage]
@@ -116,6 +145,7 @@ class ProductOut(BaseModel):
             id=str(product.id),
             source_id=product.source_id,
             title=product.title,
+            category=product.category,
             handle=product.handle,
             vendor=product.vendor,
             product_type=product.product_type,
@@ -124,6 +154,19 @@ class ProductOut(BaseModel):
             currency=product.currency,
             tags=product.tags,
             options=product.options,
+            release_year=product.release_year,
+            runtime_minutes=product.runtime_minutes,
+            vote_average=product.vote_average,
+            popularity=product.popularity,
+            original_language=product.original_language,
+            certification=product.certification,
+            primary_country=product.primary_country,
+            decade_bucket=product.decade_bucket,
+            runtime_bucket=product.runtime_bucket,
+            genres=product.genres,
+            keywords=product.keywords,
+            production_companies=product.production_companies,
+            directors=product.directors,
             description=product.description,
             url=product.url,
             images=product.images,

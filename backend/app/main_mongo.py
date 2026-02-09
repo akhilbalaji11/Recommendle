@@ -12,7 +12,9 @@ from bson import ObjectId
 from .db_mongo import get_db, close_db, Settings
 from .models_mongo import Product, ProductOut, UserCreate, UserOut, SessionCreate, SessionOut
 from .models_mongo import SelectionCreate, PrefixRatingCreate, RecommendationOut
+from .category_profiles import normalize_category
 from .services.recommender_mongo import recommender_mongo
+from .services.schema_service import ensure_multicategory_compatibility
 from .routes.game import router as game_router
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -43,6 +45,7 @@ async def on_startup():
     """Initialize the recommender on startup."""
     from .db_mongo import get_client
     db = get_client()[Settings().mongodb_db_name]
+    await ensure_multicategory_compatibility(db)
     await recommender_mongo.refresh(db)
 
 
@@ -56,6 +59,7 @@ async def on_shutdown():
 async def list_products(
     q: Optional[str] = None,
     vendor: Optional[str] = None,
+    category: Optional[str] = None,
     price_min: Optional[float] = None,
     price_max: Optional[float] = None,
     limit: int = 50,
@@ -69,6 +73,15 @@ async def list_products(
         query["title"] = {"$regex": q, "$options": "i"}
     if vendor:
         query["vendor"] = {"$regex": vendor, "$options": "i"}
+    if category:
+        try:
+            normalized = normalize_category(category)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if normalized == "fountain_pens":
+            query["$or"] = [{"category": "fountain_pens"}, {"category": {"$exists": False}}]
+        else:
+            query["category"] = normalized
     if price_min is not None:
         query["price_min"] = {"$gte": price_min}
     if price_max is not None:

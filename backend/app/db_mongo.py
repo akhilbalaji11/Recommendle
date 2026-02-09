@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import AsyncGenerator
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_PATH),
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
@@ -19,6 +22,7 @@ class Settings(BaseSettings):
     mongodb_db_name: str = "decidio"
     mongodb_max_pool_size: int = 10
     mongodb_min_pool_size: int = 1
+    tmdb_api_key: str = ""
 
 
 settings = Settings()

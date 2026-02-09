@@ -9,6 +9,7 @@ import RoundResultPanel from './components/RoundResultPanel';
 import SetRatingModal from './components/SetRatingModal';
 import WelcomeScreen from './components/WelcomeScreen';
 import {
+    getCategories,
     getLeaderboard,
     getOnboarding,
     startGame,
@@ -28,6 +29,8 @@ const VIEW = {
 export default function App() {
   const [view, setView] = useState(VIEW.WELCOME);
   const [playerName, setPlayerName] = useState('');
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('fountain_pens');
   const [game, setGame] = useState(null);
   const [onboarding, setOnboarding] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -48,12 +51,29 @@ export default function App() {
   const [welcomeLeaderboard, setWelcomeLeaderboard] = useState([]);
   const [viewingPlayer, setViewingPlayer] = useState(null);
 
-  // Load leaderboard for the welcome page on initial render
+  const activeCategory = game?.category || selectedCategory;
+
+  // Load category metadata once.
   useEffect(() => {
-    getLeaderboard(10)
-      .then(setWelcomeLeaderboard)
+    getCategories()
+      .then((payload) => {
+        setCategories(payload || []);
+        if (payload?.length > 0) {
+          const hasSelected = payload.some((c) => c.id === selectedCategory);
+          if (!hasSelected) {
+            setSelectedCategory(payload[0].id);
+          }
+        }
+      })
       .catch(() => {});
   }, []);
+
+  // Load leaderboard for selected category on welcome screen.
+  useEffect(() => {
+    getLeaderboard(10, selectedCategory)
+      .then(setWelcomeLeaderboard)
+      .catch(() => {});
+  }, [selectedCategory]);
 
   const totalRounds = game?.total_rounds ?? 5;
   const humanScore = game?.human_score ?? 0;
@@ -73,7 +93,7 @@ export default function App() {
     setError('');
     setBusy({ start: false, onboarding: false, pick: false, next: false });
     // Refresh welcome leaderboard
-    getLeaderboard(10)
+    getLeaderboard(10, selectedCategory)
       .then(setWelcomeLeaderboard)
       .catch(() => {});
   }
@@ -87,9 +107,14 @@ export default function App() {
 
   async function handleStart() {
     setError('');
+    const selected = categories.find((c) => c.id === selectedCategory);
+    if (selected && selected.available_count < 50) {
+      setError(`The ${selected.display_name} catalog is not loaded yet. Run movie ingestion first.`);
+      return;
+    }
     setBusy((prev) => ({ ...prev, start: true }));
     try {
-      const created = await startGame(playerName);
+      const created = await startGame(playerName, selectedCategory);
       const onboardingPayload = await getOnboarding(created.id);
       setGame(created);
       setOnboarding(onboardingPayload);
@@ -166,7 +191,7 @@ export default function App() {
     setBusy((prev) => ({ ...prev, next: true }));
     try {
       if (roundResult.game_complete) {
-        const board = await getLeaderboard(10);
+        const board = await getLeaderboard(10, activeCategory);
         setLeaderboard(board);
         setView(VIEW.FINAL);
       } else {
@@ -195,13 +220,20 @@ export default function App() {
       )}
 
       {view !== VIEW.WELCOME && view !== VIEW.FINAL && (
-        <BrainModePanel mode={mode} onModeChange={setMode} />
+        <BrainModePanel
+          mode={mode}
+          onModeChange={setMode}
+          categoryCopy={onboarding?.category_copy || roundData?.category_copy || roundResult?.category_copy || {}}
+        />
       )}
 
       {view === VIEW.WELCOME && (
         <WelcomeScreen
           playerName={playerName}
           setPlayerName={setPlayerName}
+          categories={categories}
+          selectedCategory={selectedCategory}
+          setSelectedCategory={setSelectedCategory}
           onStart={handleStart}
           loading={busy.start}
           leaderboard={welcomeLeaderboard}
@@ -212,6 +244,7 @@ export default function App() {
       {viewingPlayer && (
         <PlayerStatsModal
           playerName={viewingPlayer}
+          category={activeCategory}
           onClose={() => setViewingPlayer(null)}
         />
       )}
@@ -224,6 +257,7 @@ export default function App() {
             onToggle={handleToggleOnboarding}
             onOpenRating={() => setRatingModalOpen(true)}
             mode={mode}
+            categoryCopy={onboarding?.category_copy || {}}
           />
           <SetRatingModal
             open={ratingModalOpen}
@@ -232,6 +266,7 @@ export default function App() {
             loading={busy.onboarding}
             onClose={() => setRatingModalOpen(false)}
             onSubmit={handleSubmitOnboarding}
+            categoryCopy={onboarding?.category_copy || {}}
           />
         </>
       )}
@@ -243,6 +278,7 @@ export default function App() {
           humanScore={humanScore}
           aiScore={aiScore}
           mode={mode}
+          categoryCopy={roundData?.category_copy || {}}
           selectedPick={selectedRoundPick}
           onSelectPick={setSelectedRoundPick}
           onSubmitPick={handleSubmitRoundPick}
@@ -253,6 +289,7 @@ export default function App() {
       {view === VIEW.RESULT && (
         <RoundResultPanel
           result={roundResult}
+          categoryCopy={roundResult?.category_copy || {}}
           onNext={handleResultNext}
           loadingNext={busy.next}
         />
@@ -263,6 +300,7 @@ export default function App() {
           playerName={playerName}
           humanScore={humanScore}
           aiScore={aiScore}
+          category={activeCategory}
           gameId={game?.id}
           leaderboard={leaderboard}
           onRestart={resetAll}

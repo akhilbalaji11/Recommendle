@@ -7,6 +7,7 @@ export default function RoundArena({
   humanScore,
   aiScore,
   mode,
+  categoryCopy = {},
   selectedPick,
   onSelectPick,
   onSubmitPick,
@@ -15,6 +16,8 @@ export default function RoundArena({
   if (!round) {
     return null;
   }
+
+  const singular = categoryCopy.item_singular || 'item';
 
   return (
     <section className="screen shell">
@@ -53,7 +56,7 @@ export default function RoundArena({
           onClick={onSubmitPick}
           disabled={submitting || !selectedPick}
         >
-          {submitting ? 'Submitting pick...' : 'Lock In Pick'}
+          {submitting ? 'Submitting pick...' : `Lock In ${singular}`}
         </button>
       </div>
     </section>

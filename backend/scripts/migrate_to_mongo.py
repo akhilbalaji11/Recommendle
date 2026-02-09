@@ -32,6 +32,8 @@ async def migrate_products(mongo_db, sqlite_session):
     for product in sqlite_session.query(Product).all():
         # Convert SQLAlchemy product to MongoDB document
         product_doc = {
+            "category": "fountain_pens",
+            "schema_version": 2,
             "source_id": product.source_id,
             "title": product.title,
             "handle": product.handle,

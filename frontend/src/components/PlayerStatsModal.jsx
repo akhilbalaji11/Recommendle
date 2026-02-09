@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { formatPrice, getGameSummary, getPlayerHistory } from '../lib/api';
 
-export default function PlayerStatsModal({ playerName, onClose }) {
+export default function PlayerStatsModal({ playerName, category = 'fountain_pens', onClose }) {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -12,11 +12,11 @@ export default function PlayerStatsModal({ playerName, onClose }) {
   useEffect(() => {
     if (!playerName) return;
     setLoading(true);
-    getPlayerHistory(playerName)
+    getPlayerHistory(playerName, category)
       .then(setGames)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [playerName]);
+  }, [playerName, category]);
 
   async function handleExpandGame(gameId) {
     if (expandedGameId === gameId) {
@@ -165,7 +165,12 @@ export default function PlayerStatsModal({ playerName, onClose }) {
                                     {gameSummary.top5_recommendations.slice(0, 3).map((rec, i) => (
                                       <li key={rec.id}>
                                         <strong>#{i + 1}</strong> {rec.title}
-                                        <span className="muted"> · {rec.vendor} · {formatPrice(rec.price_min, rec.price_max)}</span>
+                                        <span className="muted">
+                                          {' · '}
+                                          {rec.category === 'movies'
+                                            ? (rec.meta_badges?.join(' · ') || rec.subtitle || rec.vendor || 'Unknown')
+                                            : `${rec.vendor} · ${formatPrice(rec.price_min, rec.price_max)}`}
+                                        </span>
                                       </li>
                                     ))}
                                   </ul>

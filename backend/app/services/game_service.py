@@ -86,6 +86,35 @@ class GameService:
             return "fountain_pens"
 
     @staticmethod
+    def _align_state_to_feature_space(model: PrefixCFModel, state: dict[str, Any]) -> bool:
+        """Pad/truncate persisted user vectors when feature space evolves over time."""
+        expected_dim = len(model.feature_space.feature_index)
+        raw_vec = state.get("user_vec")
+        changed = False
+
+        if not isinstance(raw_vec, list):
+            vec = [0.0] * expected_dim
+            changed = True
+        else:
+            vec: list[float] = []
+            for value in raw_vec:
+                try:
+                    vec.append(float(value))
+                except (TypeError, ValueError):
+                    vec.append(0.0)
+                    changed = True
+
+            if len(vec) < expected_dim:
+                vec.extend([0.0] * (expected_dim - len(vec)))
+                changed = True
+            elif len(vec) > expected_dim:
+                vec = vec[:expected_dim]
+                changed = True
+
+        state["user_vec"] = vec
+        return changed
+
+    @staticmethod
     def _category_product_filter(category: str) -> dict[str, Any]:
         if category == "fountain_pens":
             return {"$or": [{"category": "fountain_pens"}, {"category": {"$exists": False}}]}
@@ -126,7 +155,7 @@ class GameService:
         return {
             "id": str(product["_id"]),
             "category": resolved_category,
-            "title": product.get("title"),
+            "title": product.get("title") or "Untitled",
             "vendor": product.get("vendor"),
             "subtitle": subtitle,
             "price_min": product.get("price_min"),
@@ -229,6 +258,8 @@ class GameService:
         db: AsyncIOMotorDatabase,
         category: str,
     ) -> list[dict[str, Any]]:
+        # Keep this projection minimal because this query runs for onboarding
+        # pool construction and every round's candidate ranking.
         cursor = db.products.find(
             self._category_product_filter(category),
             {
@@ -238,7 +269,6 @@ class GameService:
                 "price_min": 1,
                 "price_max": 1,
                 "tags": 1,
-                "images": 1,
                 "product_type": 1,
                 "options": 1,
                 "release_year": 1,
@@ -334,10 +364,39 @@ class GameService:
         state: dict[str, Any],
         products: list[dict[str, Any]],
     ) -> list[tuple[float, dict[str, Any]]]:
+        # Hot path: score thousands of items per movie round.
+        user_vec = np.array(state.get("user_vec", []), dtype=np.float32)
+        feature_dim = len(model.feature_space.feature_index)
+        if user_vec.size < feature_dim:
+            user_vec = np.pad(user_vec, (0, feature_dim - user_vec.size))
+        elif user_vec.size > feature_dim:
+            user_vec = user_vec[:feature_dim]
+        user_norm = float(np.linalg.norm(user_vec))
+        bias = float(state.get("bias", 0.0))
+        item_vectors = self.recommender.item_vectors
+        item_norms = self.recommender.item_norms
+
         scored: list[tuple[float, dict[str, Any]]] = []
         for product in products:
-            vec = self.recommender.feature_space.vectorize(product)
-            score = model.score_item(state, vec)
+            pid = str(product["_id"])
+            vec = item_vectors.get(pid)
+            if vec is None:
+                vec = self.recommender.feature_space.vectorize(product)
+                item_vectors[pid] = vec
+                item_norms[pid] = float(np.linalg.norm(vec))
+
+            if user_norm <= 0:
+                similarity = 0.0
+            else:
+                item_norm = item_norms.get(pid)
+                if item_norm is None:
+                    item_norm = float(np.linalg.norm(vec))
+                    item_norms[pid] = item_norm
+                denom = user_norm * item_norm
+                similarity = float(np.dot(user_vec, vec) / denom) if denom > 0 else 0.0
+
+            score = 3.0 + 1.7 * similarity + bias
+            score = float(min(5.0, max(1.0, score)))
             scored.append((float(score), product))
         scored.sort(key=lambda item: (item[0], str(item[1]["_id"])), reverse=True)
         return scored
@@ -561,10 +620,6 @@ class GameService:
         game = await self._get_game(db, game_id)
         model = await self._ensure_model(db)
         category = self._game_category(game)
-        profile = get_category_profile(category)
-        category = self._game_category(game)
-        profile = get_category_profile(category)
-        category = self._game_category(game)
 
         if game.get("onboarding_selected_ids"):
             raise ValueError("Onboarding already submitted for this game")
@@ -612,6 +667,7 @@ class GameService:
             raise ValueError("One or more selected products were not found")
 
         state = game.get("model_state") or model.init_state()
+        self._align_state_to_feature_space(model, state)
         for product in selected_products:
             model.update_with_selection(state, product, is_exception=False)
         model.update_with_prefix_rating(state, rating)
@@ -701,6 +757,11 @@ class GameService:
             }
 
         state = game.get("model_state") or model.init_state()
+        if self._align_state_to_feature_space(model, state):
+            await db.games.update_one(
+                {"_id": game["_id"]},
+                {"$set": {"model_state": state, "updated_at": datetime.utcnow()}},
+            )
         selected_ids = await self._current_selection_sequence(db, game)
         used = set(selected_ids)
 
@@ -824,9 +885,33 @@ class GameService:
             raise ValueError("Selected product does not exist")
 
         state = game.get("model_state") or model.init_state()
+        self._align_state_to_feature_space(model, state)
+        item_vectors = self.recommender.item_vectors
+        item_norms = self.recommender.item_norms
+        user_vec = np.array(state.get("user_vec", []), dtype=np.float32)
+        user_norm = float(np.linalg.norm(user_vec))
+        bias = float(state.get("bias", 0.0))
         scored = []
         for item in candidate_products:
-            score = model.score_item(state, self.recommender.feature_space.vectorize(item))
+            pid = str(item["_id"])
+            vec = item_vectors.get(pid)
+            if vec is None:
+                vec = self.recommender.feature_space.vectorize(item)
+                item_vectors[pid] = vec
+                item_norms[pid] = float(np.linalg.norm(vec))
+
+            if user_norm <= 0:
+                similarity = 0.0
+            else:
+                item_norm = item_norms.get(pid)
+                if item_norm is None:
+                    item_norm = float(np.linalg.norm(vec))
+                    item_norms[pid] = item_norm
+                denom = user_norm * item_norm
+                similarity = float(np.dot(user_vec, vec) / denom) if denom > 0 else 0.0
+
+            score = 3.0 + 1.7 * similarity + bias
+            score = float(min(5.0, max(1.0, score)))
             scored.append((float(score), item))
         scored.sort(key=lambda item: (item[0], str(item[1]["_id"])), reverse=True)
 
@@ -1064,6 +1149,11 @@ class GameService:
 
         # Model's learned preferences from the final state
         state = game.get("model_state") or model.init_state()
+        if self._align_state_to_feature_space(model, state):
+            await db.games.update_one(
+                {"_id": game["_id"]},
+                {"$set": {"model_state": state, "updated_at": datetime.utcnow()}},
+            )
         user_vec = np.array(state.get("user_vec", []), dtype=np.float32)
         inv_index = {v: k for k, v in self.recommender.feature_space.feature_index.items()}
 

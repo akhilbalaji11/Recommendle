@@ -8,6 +8,7 @@ export default function PlayerStatsModal({ playerName, category = 'fountain_pens
   const [expandedGameId, setExpandedGameId] = useState(null);
   const [gameSummary, setGameSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
 
   useEffect(() => {
     if (!playerName) return;
@@ -22,16 +23,19 @@ export default function PlayerStatsModal({ playerName, category = 'fountain_pens
     if (expandedGameId === gameId) {
       setExpandedGameId(null);
       setGameSummary(null);
+      setSummaryError('');
       return;
     }
     setExpandedGameId(gameId);
     setGameSummary(null);
+    setSummaryError('');
     setSummaryLoading(true);
     try {
       const summary = await getGameSummary(gameId);
       setGameSummary(summary);
     } catch (err) {
       setGameSummary(null);
+      setSummaryError(err.message || 'Could not load game details.');
     } finally {
       setSummaryLoading(false);
     }
@@ -125,7 +129,10 @@ export default function PlayerStatsModal({ playerName, category = 'fountain_pens
                       {isExpanded && (
                         <div className="history-detail">
                           {summaryLoading && <p className="muted">Loading game details...</p>}
-                          {!summaryLoading && gameSummary && (
+                          {!summaryLoading && summaryError && (
+                            <p className="muted">Could not load game details: {summaryError}</p>
+                          )}
+                          {!summaryLoading && !summaryError && gameSummary && (
                             <>
                               {/* Round-by-round */}
                               <div className="detail-section">

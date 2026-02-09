@@ -20,6 +20,7 @@ class RecommenderMongo:
         self.feature_space: FeatureSpace | None = None
         self.model: PrefixCFModel | None = None
         self.item_vectors: dict[str, np.ndarray] = {}
+        self.item_norms: dict[str, float] = {}
         self.pbcf = PBCFEngineMongo(k=6, iters=40)
         self._rating_count = 0
 
@@ -31,6 +32,7 @@ class RecommenderMongo:
         self.feature_space = FeatureSpace.build(products)
         self.model = PrefixCFModel(self.feature_space)
         self.item_vectors = {str(p.id): self.feature_space.vectorize(p) for p in products}
+        self.item_norms = {pid: float(np.linalg.norm(vec)) for pid, vec in self.item_vectors.items()}
         await self._refresh_pbcf(db)
 
     async def _refresh_pbcf(self, db: AsyncIOMotorDatabase) -> None:
